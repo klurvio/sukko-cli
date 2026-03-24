@@ -31,6 +31,7 @@ services:
       NATS_JETSTREAM_URLS: nats://nats:4222
       BROADCAST_TYPE: nats
       NATS_URL: nats://nats:4222
+      PROVISIONING_GRPC_ADDR: provisioning:9090
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
       interval: 5s
@@ -39,6 +40,8 @@ services:
     depends_on:
       nats:
         condition: service_started
+      provisioning:
+        condition: service_healthy
     restart: unless-stopped
 
   ws-server:
@@ -51,6 +54,7 @@ services:
       BROADCAST_TYPE: nats
       NATS_URL: nats://nats:4222
       NATS_URLS: nats://nats:4222
+      PROVISIONING_GRPC_ADDR: provisioning:9090
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3005/health"]
       interval: 5s
@@ -59,6 +63,8 @@ services:
     depends_on:
       nats:
         condition: service_started
+      provisioning:
+        condition: service_healthy
     restart: unless-stopped
 
   sukko-tester:
