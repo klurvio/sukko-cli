@@ -52,7 +52,7 @@ var tenantCreateCmd = &cobra.Command{
 		}
 
 		req := map[string]any{
-			"tenant_id":     id,
+			"id":            id,
 			"name":          name,
 			"consumer_type": consumerType,
 		}
