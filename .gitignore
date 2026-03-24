@@ -1,6 +1,7 @@
 # Go binary
 sukko
 sukko.exe
+sukko-cli
 
 # Go build artifacts
 *.exe
@@ -37,6 +38,9 @@ dist/
 *.bak
 tmp/
 temp/
+
+# Local dev environment
+.sukko/
 
 # Project docs (local only)
 handoffs

@@ -118,11 +118,10 @@ func (s *Store) List() ([]Context, error) {
 
 	var contexts []Context
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+		name, isJSON := strings.CutSuffix(entry.Name(), ".json")
+		if entry.IsDir() || !isJSON {
 			continue
 		}
-
-		name := strings.TrimSuffix(entry.Name(), ".json")
 		ctx, err := s.Get(name)
 		if err != nil {
 			if errors.Is(err, ErrContextNotFound) {

@@ -13,9 +13,15 @@ import (
 )
 
 const (
-	sukkoConfigDir  = ".sukko"
-	sukkoConfigFile = "config.json"
+	sukkoConfigDir   = ".sukko"
+	sukkoConfigFile  = "config.json"
+	sukkoComposeFile = "docker-compose.yml"
 )
+
+// composeFilePath returns the path to the compose file within the .sukko directory.
+func composeFilePath() string {
+	return filepath.Join(".", sukkoConfigDir, sukkoComposeFile)
+}
 
 // Default dev credentials read from environment, falling back to docker-compose defaults.
 // These are NOT compiled secrets — they are well-known local dev values
@@ -68,7 +74,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
-		cfg.MessageBackend, err = promptChoice(cmd, "Message backend", []string{"direct", "kafka", "nats"}, "direct")
+		cfg.MessageBackend, err = promptChoice(cmd, "Message backend", []string{"direct", "kafka", "redpanda", "nats"}, "direct")
 		if err != nil {
 			return err
 		}

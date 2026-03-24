@@ -21,7 +21,7 @@ var statusCmd = &cobra.Command{
 	Short: "Show status of all services",
 	Long:  "Show a unified view of all Sukko services with health status.",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		mgr, err := compose.NewManager(".")
+		mgr, err := compose.NewManager(".", composeFilePath())
 		if err != nil {
 			return fmt.Errorf("create compose manager: %w", err)
 		}

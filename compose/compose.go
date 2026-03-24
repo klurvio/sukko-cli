@@ -3,6 +3,7 @@ package compose
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,20 +12,40 @@ import (
 	"strings"
 )
 
+//go:embed docker-compose.yml
+var ComposeFileContent []byte //nolint:revive // exported embedded content used by commands package
+
 const defaultLogTailLines = "100"
+
+// WriteComposeFile writes the embedded docker-compose.yml to the given path.
+func WriteComposeFile(path string) error {
+	if err := os.WriteFile(path, ComposeFileContent, 0o644); err != nil { //nolint:gosec // G306: compose file is not sensitive
+		return fmt.Errorf("write compose file: %w", err)
+	}
+	return nil
+}
 
 // Manager wraps Docker Compose CLI operations.
 type Manager struct {
-	projectDir string
+	projectDir  string
+	composeFile string
 }
 
-// NewManager creates a Manager for the given project directory (where docker-compose.yml lives).
-// Returns an error if projectDir is empty.
-func NewManager(projectDir string) (*Manager, error) {
+// NewManager creates a Manager for the given project directory and compose file path.
+// Returns an error if projectDir or composeFile is empty.
+func NewManager(projectDir, composeFile string) (*Manager, error) {
 	if projectDir == "" {
 		return nil, errors.New("project directory must not be empty")
 	}
-	return &Manager{projectDir: projectDir}, nil
+	if composeFile == "" {
+		return nil, errors.New("compose file path must not be empty")
+	}
+	return &Manager{projectDir: projectDir, composeFile: composeFile}, nil
+}
+
+// composeArgs returns the base docker compose args with the -f flag.
+func (m *Manager) composeArgs() []string {
+	return []string{"compose", "-f", m.composeFile}
 }
 
 // ServiceStatus represents the status of a Docker Compose service.
@@ -38,12 +59,11 @@ type ServiceStatus struct {
 
 // Up starts services with the given profiles and environment overrides.
 func (m *Manager) Up(ctx context.Context, profiles []string, envOverrides map[string]string) error {
-	args := make([]string, 0, 1+2*len(profiles)+3)
-	args = append(args, "compose")
+	args := m.composeArgs()
 	for _, p := range profiles {
 		args = append(args, "--profile", p)
 	}
-	args = append(args, "up", "-d", "--build")
+	args = append(args, "up", "-d")
 
 	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // G204: args built from fixed strings and validated profile names
 	cmd.Dir = m.projectDir
@@ -64,12 +84,13 @@ func (m *Manager) Up(ctx context.Context, profiles []string, envOverrides map[st
 
 // Down stops and removes services.
 func (m *Manager) Down(ctx context.Context, removeVolumes bool) error {
-	args := []string{"compose", "down"}
+	args := m.composeArgs()
+	args = append(args, "down")
 	if removeVolumes {
 		args = append(args, "-v")
 	}
 
-	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // G204: args built from fixed strings
 	cmd.Dir = m.projectDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -82,7 +103,10 @@ func (m *Manager) Down(ctx context.Context, removeVolumes bool) error {
 
 // Status returns the status of all services.
 func (m *Manager) Status(ctx context.Context) ([]ServiceStatus, error) {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "ps", "--format", "json")
+	args := m.composeArgs()
+	args = append(args, "ps", "--format", "json")
+
+	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // G204: args built from fixed strings
 	cmd.Dir = m.projectDir
 
 	out, err := cmd.Output()
@@ -115,14 +139,15 @@ func (m *Manager) Status(ctx context.Context) ([]ServiceStatus, error) {
 
 // Logs streams logs from the specified services. If services is empty, tails all.
 func (m *Manager) Logs(ctx context.Context, services []string, follow bool) error {
-	args := []string{"compose", "logs"}
+	args := m.composeArgs()
+	args = append(args, "logs")
 	if follow {
 		args = append(args, "-f")
 	}
 	args = append(args, "--tail", defaultLogTailLines)
 	args = append(args, services...)
 
-	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // G204: args built from fixed strings
 	cmd.Dir = m.projectDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -135,7 +160,10 @@ func (m *Manager) Logs(ctx context.Context, services []string, follow bool) erro
 
 // IsRunning returns true if the Docker Compose project has running services.
 func (m *Manager) IsRunning(ctx context.Context) bool {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "ps", "-q")
+	args := m.composeArgs()
+	args = append(args, "ps", "-q")
+
+	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // G204: args built from fixed strings
 	cmd.Dir = m.projectDir
 
 	// err ignored: docker compose ps failure (daemon unreachable, not installed) is treated as "not running"
