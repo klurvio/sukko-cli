@@ -3,7 +3,7 @@ project_name: sukko
 
 before:
   hooks:
-    - cmd: sh -c "go build -o /tmp/sukko-gen . && /tmp/sukko-gen completion bash > /tmp/sukko.bash && /tmp/sukko-gen completion zsh > /tmp/sukko.zsh && /tmp/sukko-gen completion fish > /tmp/sukko.fish"
+    - sh -c "go build -o /tmp/sukko-gen . && /tmp/sukko-gen completion bash > /tmp/sukko.bash && /tmp/sukko-gen completion zsh > /tmp/sukko.zsh && /tmp/sukko-gen completion fish > /tmp/sukko.fish"
 
 builds:
   - id: sukko
