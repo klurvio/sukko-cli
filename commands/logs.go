@@ -23,7 +23,7 @@ var logsCmd = &cobra.Command{
 Only available for local Docker Compose environments. Specify service names
 to filter (e.g., 'sukko logs ws-gateway ws-server').`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		mgr, err := compose.NewManager(".")
+		mgr, err := compose.NewManager(".", composeFilePath())
 		if err != nil {
 			return fmt.Errorf("create compose manager: %w", err)
 		}

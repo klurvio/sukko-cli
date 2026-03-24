@@ -19,7 +19,7 @@ var downCmd = &cobra.Command{
 	Short: "Stop the local development environment",
 	Long:  "Stop and remove local Docker Compose services. Use -v to also remove volumes.",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		mgr, err := compose.NewManager(".")
+		mgr, err := compose.NewManager(".", composeFilePath())
 		if err != nil {
 			return fmt.Errorf("create compose manager: %w", err)
 		}

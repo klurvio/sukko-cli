@@ -18,8 +18,9 @@ const healthTimeout = 120 * time.Second
 const (
 	composeDatabaseURL = "postgres://sukko:sukko@postgres:5432/sukko_provisioning?sslmode=disable" //nolint:gosec // G101: not a credential — Docker Compose internal connection string with well-known dev defaults
 	composeValkeyAddr  = "valkey:6379"
-	composeKafkaBroker = "redpanda:9092"
-	composeNATSURL     = "nats://nats:4222"
+	composeKafkaBroker    = "kafka:9092"
+	composeRedpandaBroker = "redpanda:9092"
+	composeNATSURL        = "nats://nats:4222"
 )
 
 func init() {
@@ -56,8 +57,13 @@ func runUp(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintf(cmd.OutOrStdout(), "Starting Sukko (%s + %s + %s)...\n",
 		cfg.Database, cfg.Broadcast, cfg.MessageBackend)
 
+	// Write embedded compose file to .sukko/
+	if err := compose.WriteComposeFile(composeFilePath()); err != nil {
+		return fmt.Errorf("write compose file: %w", err)
+	}
+
 	// Start Docker Compose
-	mgr, err := compose.NewManager(".")
+	mgr, err := compose.NewManager(".", composeFilePath())
 	if err != nil {
 		return fmt.Errorf("create compose manager: %w", err)
 	}
@@ -130,6 +136,10 @@ func buildComposeConfig(cfg ProjectConfig) (profiles []string, envOverrides map[
 		profiles = append(profiles, "kafka")
 		envOverrides["MESSAGE_BACKEND"] = "kafka"
 		envOverrides["KAFKA_BROKERS"] = composeKafkaBroker
+	case "redpanda":
+		profiles = append(profiles, "redpanda")
+		envOverrides["MESSAGE_BACKEND"] = "kafka"
+		envOverrides["KAFKA_BROKERS"] = composeRedpandaBroker
 	case "nats":
 		envOverrides["MESSAGE_BACKEND"] = "nats"
 		envOverrides["NATS_JETSTREAM_URLS"] = composeNATSURL
