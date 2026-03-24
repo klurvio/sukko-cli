@@ -54,7 +54,7 @@ func WaitForHealth(ctx context.Context, w io.Writer, targets []HealthTarget, tim
 				}
 				_ = resp.Body.Close() // error from closing a read-only HTTP response body is always nil
 				if resp.StatusCode == http.StatusOK {
-					fmt.Fprintf(w, "  %s: healthy\n", name)
+					_, _ = fmt.Fprintf(w, "  %s: healthy\n", name)
 					delete(pending, name)
 				}
 			}

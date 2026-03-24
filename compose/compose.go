@@ -13,7 +13,7 @@ import (
 )
 
 //go:embed docker-compose.yml
-var ComposeFileContent []byte
+var ComposeFileContent []byte //nolint:revive // exported embedded content used by commands package
 
 const defaultLogTailLines = "100"
 
@@ -90,7 +90,7 @@ func (m *Manager) Down(ctx context.Context, removeVolumes bool) error {
 		args = append(args, "-v")
 	}
 
-	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // G204: args built from fixed strings
 	cmd.Dir = m.projectDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -106,7 +106,7 @@ func (m *Manager) Status(ctx context.Context) ([]ServiceStatus, error) {
 	args := m.composeArgs()
 	args = append(args, "ps", "--format", "json")
 
-	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // G204: args built from fixed strings
 	cmd.Dir = m.projectDir
 
 	out, err := cmd.Output()
@@ -147,7 +147,7 @@ func (m *Manager) Logs(ctx context.Context, services []string, follow bool) erro
 	args = append(args, "--tail", defaultLogTailLines)
 	args = append(args, services...)
 
-	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // G204: args built from fixed strings
 	cmd.Dir = m.projectDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -163,7 +163,7 @@ func (m *Manager) IsRunning(ctx context.Context) bool {
 	args := m.composeArgs()
 	args = append(args, "ps", "-q")
 
-	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // G204: args built from fixed strings
 	cmd.Dir = m.projectDir
 
 	// err ignored: docker compose ps failure (daemon unreachable, not installed) is treated as "not running"

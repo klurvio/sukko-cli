@@ -16,8 +16,8 @@ const healthTimeout = 120 * time.Second
 // Docker Compose internal service addresses — used by buildComposeConfig
 // to wire services together inside the compose network.
 const (
-	composeDatabaseURL = "postgres://sukko:sukko@postgres:5432/sukko_provisioning?sslmode=disable" //nolint:gosec // G101: not a credential — Docker Compose internal connection string with well-known dev defaults
-	composeValkeyAddr  = "valkey:6379"
+	composeDatabaseURL    = "postgres://sukko:sukko@postgres:5432/sukko_provisioning?sslmode=disable" //nolint:gosec // G101: not a credential — Docker Compose internal connection string with well-known dev defaults
+	composeValkeyAddr     = "valkey:6379"
 	composeKafkaBroker    = "kafka:9092"
 	composeRedpandaBroker = "redpanda:9092"
 	composeNATSURL        = "nats://nats:4222"
