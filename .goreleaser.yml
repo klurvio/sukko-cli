@@ -1,0 +1,97 @@
+version: 2
+project_name: sukko
+
+before:
+  hooks:
+    - cmd: sh -c "go build -o /tmp/sukko-gen . && /tmp/sukko-gen completion bash > /tmp/sukko.bash && /tmp/sukko-gen completion zsh > /tmp/sukko.zsh && /tmp/sukko-gen completion fish > /tmp/sukko.fish"
+
+builds:
+  - id: sukko
+    main: .
+    binary: sukko
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X 'github.com/klurvio/sukko-cli/internal/version.Version={{.Version}}'
+      - -X 'github.com/klurvio/sukko-cli/internal/version.CommitHash={{.ShortCommit}}'
+      - -X 'github.com/klurvio/sukko-cli/internal/version.BuildTime={{.Date}}'
+
+archives:
+  - id: sukko
+    builds: [sukko]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+nfpms:
+  - id: sukko
+    builds: [sukko]
+    package_name: sukko
+    vendor: Klurvio
+    homepage: https://github.com/klurvio/sukko-cli
+    maintainer: Klurvio <contact@klurvio.com>
+    description: "Sukko WebSocket platform CLI"
+    license: MIT
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    contents:
+      - src: /tmp/sukko.bash
+        dst: /usr/share/bash-completion/completions/sukko
+      - src: /tmp/sukko.zsh
+        dst: /usr/share/zsh/vendor-completions/_sukko
+      - src: /tmp/sukko.fish
+        dst: /usr/share/fish/vendor_completions.d/sukko.fish
+
+brews:
+  - repository:
+      owner: klurvio
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    ids: [sukko]
+    homepage: https://github.com/klurvio/sukko-cli
+    description: "Sukko WebSocket platform CLI"
+    license: MIT
+    install: |
+      bin.install "sukko"
+      generate_completions_from_executable(bin/"sukko", "completion")
+    test: |
+      system "#{bin}/sukko", "version"
+    skip_upload: auto
+
+scoops:
+  - repository:
+      owner: klurvio
+      name: scoop-bucket
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    ids: [sukko]
+    homepage: https://github.com/klurvio/sukko-cli
+    description: "Sukko WebSocket platform CLI"
+    license: MIT
+    skip_upload: auto
+
+release:
+  prerelease: auto
+  name_template: "{{.Tag}}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^style:"
+      - "^chore:"
