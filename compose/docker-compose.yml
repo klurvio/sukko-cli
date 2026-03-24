@@ -11,6 +11,7 @@ services:
       NATS_JETSTREAM_URLS: nats://nats:4222
       BROADCAST_TYPE: nats
       NATS_URL: nats://nats:4222
+      DATABASE_PATH: /tmp/sukko.db
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 5s
@@ -51,6 +52,7 @@ services:
       NATS_JETSTREAM_URLS: nats://nats:4222
       BROADCAST_TYPE: nats
       NATS_URL: nats://nats:4222
+      NATS_URLS: nats://nats:4222
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3005/health"]
       interval: 5s
