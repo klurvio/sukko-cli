@@ -168,7 +168,7 @@ func provisionDefaultTenant(cmd *cobra.Command) error {
 
 	// Create default tenant (ignore conflict — may already exist)
 	_, err = c.CreateTenant(ctx, map[string]any{
-		"tenant_id":     "local",
+		"id":            "local",
 		"name":          "Local Development",
 		"consumer_type": "shared",
 	})
