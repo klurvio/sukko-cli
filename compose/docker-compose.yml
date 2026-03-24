@@ -6,7 +6,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      ADMIN_TOKEN: sukko-dev-token
+      PROVISIONING_ADMIN_TOKEN: sukko-dev-token
       HMAC_SECRET: "sukko-dev-secret-minimum-32-bytes!!"
       NATS_JETSTREAM_URLS: nats://nats:4222
       BROADCAST_TYPE: nats
@@ -27,7 +27,6 @@ services:
     ports:
       - "3000:3000"
     environment:
-      ADMIN_TOKEN: sukko-dev-token
       HMAC_SECRET: "sukko-dev-secret-minimum-32-bytes!!"
       NATS_JETSTREAM_URLS: nats://nats:4222
       BROADCAST_TYPE: nats
@@ -47,7 +46,6 @@ services:
     ports:
       - "3005:3005"
     environment:
-      ADMIN_TOKEN: sukko-dev-token
       HMAC_SECRET: "sukko-dev-secret-minimum-32-bytes!!"
       NATS_JETSTREAM_URLS: nats://nats:4222
       BROADCAST_TYPE: nats
@@ -68,7 +66,6 @@ services:
     ports:
       - "8090:8090"
     environment:
-      ADMIN_TOKEN: sukko-dev-token
       HMAC_SECRET: "sukko-dev-secret-minimum-32-bytes!!"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8090/health"]
