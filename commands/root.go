@@ -73,7 +73,10 @@ func Execute() error {
 
 // newClient creates an AdminClient resolving config from: flags > context > env > defaults.
 func newClient() (*client.AdminClient, error) {
-	url, tok := resolveClientConfig()
+	url, tok, err := resolveClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("resolve client config: %w", err)
+	}
 
 	c, err := client.New(client.Config{
 		BaseURL: url,
@@ -87,7 +90,7 @@ func newClient() (*client.AdminClient, error) {
 }
 
 // resolveClientConfig returns the API URL and token, preferring flags over context.
-func resolveClientConfig() (url, tok string) {
+func resolveClientConfig() (url, tok string, err error) {
 	url = apiURL
 	tok = token
 
@@ -97,10 +100,14 @@ func resolveClientConfig() (url, tok string) {
 			url = resolvedCtx.ProvisioningURL
 		}
 		if tok == "" {
-			// Ignore decrypt error: server will return 401, giving the user a clear unauthorized error.
-			if t, err := resolvedCtx.AdminToken(resolvedStore.Key()); err == nil && t != "" {
-				tok = t
+			t, decErr := resolvedCtx.AdminToken(resolvedStore.Key())
+			if decErr != nil {
+				return "", "", fmt.Errorf("decrypt admin token: %w", decErr)
 			}
+			if t == "" {
+				return "", "", fmt.Errorf("admin token is empty in context %q — re-run 'sukko init'", resolvedCtx.Name)
+			}
+			tok = t
 		}
 	}
 
@@ -109,7 +116,7 @@ func resolveClientConfig() (url, tok string) {
 		url = defaultAPIURL
 	}
 
-	return url, tok
+	return url, tok, nil
 }
 
 // resolveTenant returns the tenant ID from: --tenant flag > context > empty.

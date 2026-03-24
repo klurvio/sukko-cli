@@ -2,6 +2,7 @@ package commands
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,6 +50,15 @@ func runUp(cmd *cobra.Command, _ []string) error {
 	var cfg ProjectConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return fmt.Errorf("parse config: %w", err)
+	}
+
+	// Verify credentials are available before starting services
+	if resolvedCtx == nil {
+		return errors.New("no active context found — run 'sukko init' first")
+	}
+	if _, _, err := resolveClientConfig(); err != nil {
+		fmt.Fprintln(cmd.ErrOrStderr(), "Hint: run 'sukko init' to reset credentials")
+		return fmt.Errorf("resolve credentials: %w", err)
 	}
 
 	// Build profiles and env overrides from selections

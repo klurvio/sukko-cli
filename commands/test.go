@@ -113,7 +113,10 @@ var testValidateCmd = &cobra.Command{
 
 func runTest(cmd *cobra.Command, testType string, extra map[string]any) error {
 	testerURL := resolveTesterURL(testTesterURL)
-	_, tok := resolveClientConfig()
+	_, tok, err := resolveClientConfig()
+	if err != nil {
+		return fmt.Errorf("resolve client config: %w", err)
+	}
 
 	body := map[string]any{"type": testType}
 	maps.Copy(body, extra)
@@ -142,7 +145,7 @@ func runTest(cmd *cobra.Command, testType string, extra map[string]any) error {
 
 	if resp.StatusCode != http.StatusCreated {
 		var errResp map[string]string
-		json.NewDecoder(resp.Body).Decode(&errResp)
+		_ = json.NewDecoder(resp.Body).Decode(&errResp) // best-effort: fall back to resp.Status if body isn't JSON
 		msg := errResp["message"]
 		if msg == "" {
 			msg = resp.Status
