@@ -259,6 +259,64 @@ func (c *AdminClient) TestAccess(ctx context.Context, tenantID string, req map[s
 	return c.doJSON(ctx, "POST", tenantPath(tenantID, "test-access"), req)
 }
 
+// --- Edition ---
+
+// EditionResponse represents the GET /edition response from the provisioning service.
+type EditionResponse struct {
+	Edition   string        `json:"edition"`
+	Org       string        `json:"org"`
+	ExpiresAt string        `json:"expires_at"`
+	Expired   bool          `json:"expired"`
+	Limits    EditionLimits `json:"limits"`
+	Usage     EditionUsage  `json:"usage"`
+}
+
+// EditionLimits holds the hard limits for the current edition.
+// A value of 0 means unlimited.
+type EditionLimits struct {
+	MaxTenants               int `json:"max_tenants"`
+	MaxTotalConnections      int `json:"max_total_connections"`
+	MaxShards                int `json:"max_shards"`
+	MaxTopicsPerTenant       int `json:"max_topics_per_tenant"`
+	MaxRoutingRulesPerTenant int `json:"max_routing_rules_per_tenant"`
+}
+
+// EditionUsage holds live resource usage counts. Nil fields indicate
+// the data source did not provide that metric.
+type EditionUsage struct {
+	Tenants     *int `json:"tenants"`
+	Connections *int `json:"connections"`
+	Shards      *int `json:"shards"`
+}
+
+// GetEdition fetches the edition status from GET /edition.
+// This endpoint does not require authentication — the method makes a direct
+// HTTP call without the Bearer token (unlike doJSON which always adds it).
+func (c *AdminClient) GetEdition(ctx context.Context) (*EditionResponse, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/edition", http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("create edition request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch edition: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }() // close error inconsequential for completed HTTP response
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096)) // best-effort: read error body for diagnostics
+		return nil, fmt.Errorf("fetch edition: server returned %s: %s", resp.Status, string(body))
+	}
+
+	var edition EditionResponse
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 10<<20)).Decode(&edition); err != nil {
+		return nil, fmt.Errorf("decode edition response: %w", err)
+	}
+
+	return &edition, nil
+}
+
 // --- Internal ---
 
 func (c *AdminClient) doJSON(ctx context.Context, method, path string, body any) (map[string]any, error) {

@@ -11,6 +11,7 @@ type Context struct {
 	AdminTokenEnc   string `json:"admin_token_encrypted,omitempty"`
 	HMACSecretEnc   string `json:"hmac_secret_encrypted,omitempty"`
 	APIKeyEnc       string `json:"api_key_encrypted,omitempty"`
+	LicenseKeyEnc   string `json:"license_key_encrypted,omitempty"`
 	ActiveTenant    string `json:"active_tenant,omitempty"`
 }
 
@@ -34,6 +35,18 @@ func (c *Context) HMACSecret(key []byte) (string, error) {
 	plaintext, err := Decrypt(key, c.HMACSecretEnc)
 	if err != nil {
 		return "", fmt.Errorf("decrypt hmac secret: %w", err)
+	}
+	return plaintext, nil
+}
+
+// LicenseKey decrypts and returns the license key.
+func (c *Context) LicenseKey(key []byte) (string, error) {
+	if c.LicenseKeyEnc == "" {
+		return "", nil
+	}
+	plaintext, err := Decrypt(key, c.LicenseKeyEnc)
+	if err != nil {
+		return "", fmt.Errorf("decrypt license key: %w", err)
 	}
 	return plaintext, nil
 }
