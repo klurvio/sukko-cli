@@ -427,6 +427,111 @@ func TestAdminClient_EmptyKeyID(t *testing.T) {
 	}
 }
 
+func TestAdminClient_GetEdition(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		serverStatus int
+		serverBody   string
+		wantErr      bool
+		wantEdition  string
+		wantExpired  bool
+	}{
+		{
+			name:         "valid pro response",
+			serverStatus: http.StatusOK,
+			serverBody:   `{"edition":"pro","org":"Acme Corp","expires_at":"2027-03-25T00:00:00Z","expired":false,"limits":{"max_tenants":50,"max_total_connections":10000,"max_shards":8,"max_topics_per_tenant":50,"max_routing_rules_per_tenant":100},"usage":{"tenants":5,"connections":1200,"shards":2}}`,
+			wantEdition:  "pro",
+		},
+		{
+			name:         "expired license",
+			serverStatus: http.StatusOK,
+			serverBody:   `{"edition":"community","org":"Acme Corp","expires_at":"2026-01-15T00:00:00Z","expired":true,"limits":{"max_tenants":3,"max_total_connections":500,"max_shards":1},"usage":{"tenants":2}}`,
+			wantEdition:  "community",
+			wantExpired:  true,
+		},
+		{
+			name:         "community no org",
+			serverStatus: http.StatusOK,
+			serverBody:   `{"edition":"community","expired":false,"limits":{"max_tenants":3,"max_total_connections":500,"max_shards":1},"usage":{}}`,
+			wantEdition:  "community",
+		},
+		{
+			name:         "server error",
+			serverStatus: http.StatusInternalServerError,
+			serverBody:   `{"error":"internal"}`,
+			wantErr:      true,
+		},
+		{
+			name:         "invalid JSON",
+			serverStatus: http.StatusOK,
+			serverBody:   `not-json`,
+			wantErr:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var gotPath string
+			var gotAuth string
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotPath = r.URL.Path
+				gotAuth = r.Header.Get("Authorization")
+
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.serverStatus)
+				fmt.Fprint(w, tt.serverBody)
+			}))
+			defer srv.Close()
+
+			c, _ := New(Config{BaseURL: srv.URL, Token: "test-token"})
+
+			resp, err := c.GetEdition(context.Background())
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error but got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if gotPath != "/edition" {
+				t.Errorf("path = %q, want /edition", gotPath)
+			}
+
+			if gotAuth != "" {
+				t.Error("GetEdition should not send Authorization header")
+			}
+
+			if resp.Edition != tt.wantEdition {
+				t.Errorf("edition = %q, want %q", resp.Edition, tt.wantEdition)
+			}
+
+			if resp.Expired != tt.wantExpired {
+				t.Errorf("expired = %v, want %v", resp.Expired, tt.wantExpired)
+			}
+		})
+	}
+}
+
+func TestAdminClient_GetEdition_Unreachable(t *testing.T) {
+	t.Parallel()
+
+	c, _ := New(Config{BaseURL: "http://127.0.0.1:1"}) // port 1 — connection refused
+	_, err := c.GetEdition(context.Background())
+	if err == nil {
+		t.Fatal("expected error for unreachable server, got nil")
+	}
+}
+
 func TestAdminClient_DefaultTimeout(t *testing.T) {
 	t.Parallel()
 

@@ -16,7 +16,7 @@ var (
 	colorGreen  = "\033[32m"
 	colorRed    = "\033[31m"
 	colorYellow = "\033[33m"
-	colorCyan   = "\033[36m" //nolint:unused // reserved for future status colors
+	colorCyan   = "\033[36m"
 	colorBold   = "\033[1m"
 )
 

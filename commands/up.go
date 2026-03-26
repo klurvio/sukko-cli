@@ -64,6 +64,13 @@ func runUp(cmd *cobra.Command, _ []string) error {
 	// Build profiles and env overrides from selections
 	profiles, envOverrides := buildComposeConfig(cfg)
 
+	// best-effort: license key passthrough is optional; decrypt failure is non-fatal
+	if resolvedCtx != nil && resolvedStore != nil {
+		if lk, err := resolvedCtx.LicenseKey(resolvedStore.Key()); err == nil && lk != "" {
+			envOverrides["SUKKO_LICENSE_KEY"] = lk
+		}
+	}
+
 	fmt.Fprintf(cmd.OutOrStdout(), "Starting Sukko (%s + %s + %s)...\n",
 		cfg.Database, cfg.Broadcast, cfg.MessageBackend)
 

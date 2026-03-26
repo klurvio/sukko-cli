@@ -235,6 +235,65 @@ func TestStoreRemoveClearsActive(t *testing.T) {
 	}
 }
 
+func TestLicenseKeyRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+
+	// Encrypt and store
+	licenseKey := "eyJlZGl0aW9uIjoicHJvIn0.c2lnbmF0dXJl"
+	enc, err := store.EncryptSecret(licenseKey)
+	if err != nil {
+		t.Fatalf("EncryptSecret: %v", err)
+	}
+
+	ctx := &Context{
+		Name:          "license-test",
+		GatewayURL:    "ws://localhost",
+		LicenseKeyEnc: enc,
+	}
+	if err := store.Add(ctx); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	// Retrieve and decrypt
+	got, err := store.Get("license-test")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	decrypted, err := got.LicenseKey(store.Key())
+	if err != nil {
+		t.Fatalf("LicenseKey: %v", err)
+	}
+	if decrypted != licenseKey {
+		t.Errorf("LicenseKey = %q, want %q", decrypted, licenseKey)
+	}
+}
+
+func TestLicenseKeyEmpty(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	ctx := &Context{Name: "no-license", GatewayURL: "ws://localhost"}
+	if err := store.Add(ctx); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	got, err := store.Get("no-license")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	val, err := got.LicenseKey(store.Key())
+	if err != nil {
+		t.Fatalf("LicenseKey: %v", err)
+	}
+	if val != "" {
+		t.Errorf("LicenseKey = %q, want empty", val)
+	}
+}
+
 func TestStoreFilePermissions(t *testing.T) {
 	t.Parallel()
 
