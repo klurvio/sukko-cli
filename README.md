@@ -30,11 +30,14 @@ Download from [Releases](https://github.com/klurvio/sukko-cli/releases). Availab
 ## Quick Start
 
 ```bash
-# Initialize a context (stores server URLs and credentials locally)
+# Initialize a local context (stores server URLs and credentials)
 sukko init
 
-# Start local development stack
+# Start local development stack (Docker Compose)
 sukko up
+
+# Check edition and resource usage
+sukko edition
 
 # Create a tenant
 sukko tenant create --name my-app
@@ -52,6 +55,22 @@ sukko publish --channel chat --data '{"text": "hello"}' --key <api-key>
 sukko down
 ```
 
+### License Key Management
+
+```bash
+# Store a license key (encrypted in context)
+sukko license set
+
+# View stored license info
+sukko license show
+
+# Compare editions
+sukko edition compare
+
+# License key is automatically passed to services on sukko up
+sukko up
+```
+
 ## Commands
 
 | Command | Description |
@@ -67,10 +86,13 @@ sukko down
 | `sukko connections` | List active connections |
 | `sukko rules` | Manage channel rules |
 | `sukko quota` | Manage quotas |
+| `sukko edition` | Show current edition, limits, and resource usage |
+| `sukko edition compare` | Compare Community, Pro, and Enterprise editions |
+| `sukko license` | Store, view, and remove license keys |
 | `sukko health` | Check service health |
 | `sukko status` | Show platform status |
 | `sukko logs` | View service logs |
-| `sukko test` | Run connectivity tests |
+| `sukko test` | Run connectivity and load tests |
 | `sukko config` | View/set config defaults |
 | `sukko completion` | Generate shell completions |
 | `sukko version` | Print version info |
@@ -86,6 +108,16 @@ Flags can be set via environment variables:
 | `--context` | `SUKKO_CONTEXT` | — |
 
 Resolution order: **flags > context > environment variables > defaults**.
+
+### Contexts
+
+Contexts store per-environment configuration (URLs, encrypted credentials, license keys). Switch between environments with `sukko context use <name>`.
+
+```bash
+sukko init                    # creates "local" context
+sukko context list            # list all contexts
+sukko context use staging     # switch to staging
+```
 
 ## License
 
