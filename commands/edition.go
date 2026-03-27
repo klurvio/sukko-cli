@@ -23,7 +23,8 @@ var editionCmd = &cobra.Command{
 	Long: `Show the current Sukko edition (Community/Pro/Enterprise), license status,
 hard limits, and live resource usage.
 
-Fetches data from the provisioning service's /edition endpoint.
+Fetches data from provisioning's /edition endpoint (tenant usage) and
+gateway's /edition endpoint (connection/shard usage), merging both.
 Falls back to locally stored license key if the platform is unreachable.`,
 	RunE: runEdition,
 }
@@ -41,11 +42,48 @@ func resolveProvisioningURL() string {
 	return defaultAPIURL
 }
 
-func runEdition(cmd *cobra.Command, _ []string) error {
-	// TODO: add tester /api/v1/edition as first fallback when monorepo implements FR-008
+// resolveGatewayHTTPURL returns the gateway HTTP URL without requiring a valid token.
+func resolveGatewayHTTPURL() string {
+	if resolvedCtx != nil && resolvedCtx.GatewayURL != "" {
+		return wsToHTTP(resolvedCtx.GatewayURL)
+	}
+	return defaultGatewayHTTP
+}
 
-	// Try provisioning API (no auth required)
-	c, err := client.New(client.Config{
+// mergeGatewayUsage fetches edition data from the gateway and fills in usage
+// fields that provisioning doesn't have (connections, shards). Best-effort —
+// if the gateway is unreachable, provisioning data is shown as-is.
+func mergeGatewayUsage(cmd *cobra.Command, resp *client.EditionResponse) {
+	gwClient, err := client.New(client.Config{
+		BaseURL: resolveGatewayHTTPURL(),
+		Timeout: 2 * time.Second,
+	})
+	if err != nil {
+		return // best-effort: gateway client creation failed
+	}
+
+	gwResp, err := gwClient.GetEdition(cmd.Context())
+	if err != nil {
+		return // best-effort: gateway unreachable, provisioning data still shown
+	}
+
+	mergeEditionUsage(&resp.Usage, &gwResp.Usage)
+}
+
+// mergeEditionUsage fills nil fields in dst from src. Does not overwrite
+// non-nil fields — provisioning data takes precedence.
+func mergeEditionUsage(dst, src *client.EditionUsage) {
+	if dst.Connections == nil && src.Connections != nil {
+		dst.Connections = src.Connections
+	}
+	if dst.Shards == nil && src.Shards != nil {
+		dst.Shards = src.Shards
+	}
+}
+
+func runEdition(cmd *cobra.Command, _ []string) error {
+	// Try provisioning API (no auth required) — has tenant/rule usage
+	provClient, err := client.New(client.Config{
 		BaseURL: resolveProvisioningURL(),
 		Timeout: client.DefaultClientTimeout,
 	})
@@ -53,8 +91,11 @@ func runEdition(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("create edition client: %w", err)
 	}
 
-	resp, apiErr := c.GetEdition(cmd.Context())
+	resp, apiErr := provClient.GetEdition(cmd.Context())
 	if apiErr == nil {
+		// Merge gateway edition data for connection/shard usage
+		mergeGatewayUsage(cmd, resp)
+
 		if output == "json" {
 			return printJSON(resp)
 		}
@@ -232,6 +273,9 @@ published edition matrix. No running services required.`,
 	RunE: runEditionCompare,
 }
 
+// editionMatrix is the compiled-in edition comparison data.
+// Keep in sync with license.DefaultLimits() and license.featureEditions in the monorepo
+// (github.com/klurvio/sukko ws/internal/shared/license/). Edition values change ~1-2x/year.
 var editionMatrix = []struct {
 	dimension  string
 	community  string
