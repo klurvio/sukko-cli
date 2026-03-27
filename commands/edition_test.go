@@ -3,6 +3,8 @@ package commands
 import (
 	"strings"
 	"testing"
+
+	"github.com/klurvio/sukko-cli/client"
 )
 
 func TestEditionCmd_Registration(t *testing.T) {
@@ -97,5 +99,77 @@ func TestComparisonData_JSON(t *testing.T) {
 	url, _ := data["upgrade_url"].(string)
 	if !strings.Contains(url, "sukko.dev") {
 		t.Errorf("upgrade_url = %q, want sukko.dev URL", url)
+	}
+}
+
+func TestMergeEditionUsage(t *testing.T) {
+	t.Parallel()
+
+	intPtr := func(v int) *int { return &v }
+
+	tests := []struct {
+		name        string
+		dst         client.EditionUsage
+		src         client.EditionUsage
+		wantConns   *int
+		wantShards  *int
+		wantTenants *int
+	}{
+		{
+			name:        "fills nil connections and shards from src",
+			dst:         client.EditionUsage{Tenants: intPtr(5)},
+			src:         client.EditionUsage{Connections: intPtr(1200), Shards: intPtr(2)},
+			wantTenants: intPtr(5),
+			wantConns:   intPtr(1200),
+			wantShards:  intPtr(2),
+		},
+		{
+			name:       "does not overwrite non-nil dst fields",
+			dst:        client.EditionUsage{Connections: intPtr(999), Shards: intPtr(4)},
+			src:        client.EditionUsage{Connections: intPtr(1200), Shards: intPtr(2)},
+			wantConns:  intPtr(999),
+			wantShards: intPtr(4),
+		},
+		{
+			name:       "both nil — stays nil",
+			dst:        client.EditionUsage{},
+			src:        client.EditionUsage{},
+			wantConns:  nil,
+			wantShards: nil,
+		},
+		{
+			name:       "src nil — dst unchanged",
+			dst:        client.EditionUsage{Connections: intPtr(500)},
+			src:        client.EditionUsage{},
+			wantConns:  intPtr(500),
+			wantShards: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			mergeEditionUsage(&tt.dst, &tt.src)
+
+			checkIntPtr(t, "Connections", tt.dst.Connections, tt.wantConns)
+			checkIntPtr(t, "Shards", tt.dst.Shards, tt.wantShards)
+			if tt.wantTenants != nil {
+				checkIntPtr(t, "Tenants", tt.dst.Tenants, tt.wantTenants)
+			}
+		})
+	}
+}
+
+func checkIntPtr(t *testing.T, name string, got, want *int) {
+	t.Helper()
+	if got == nil && want == nil {
+		return
+	}
+	if got == nil || want == nil {
+		t.Errorf("%s: got %v, want %v", name, got, want)
+		return
+	}
+	if *got != *want {
+		t.Errorf("%s: got %d, want %d", name, *got, *want)
 	}
 }
