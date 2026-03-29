@@ -122,6 +122,17 @@ func runUp(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("health check: %w", err)
 	}
 
+	// Observability services — warn on error, don't fail (NFR-002)
+	if cfg.Observability {
+		obsTargets := []compose.HealthTarget{
+			{Name: "grafana", URL: "http://localhost:3030/api/health"},
+			{Name: "prometheus", URL: "http://localhost:9091/-/healthy"},
+		}
+		if err := compose.WaitForHealth(cmd.Context(), cmd.OutOrStdout(), obsTargets, healthTimeout); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: observability services not healthy: %v\n", err)
+		}
+	}
+
 	// Provision default tenant
 	fmt.Fprintln(cmd.OutOrStdout(), "\nProvisioning default tenant...")
 	if err := provisionDefaultTenant(cmd); err != nil {
@@ -132,6 +143,13 @@ func runUp(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintln(cmd.OutOrStdout(), "\nSukko is ready! Try:")
 	fmt.Fprintln(cmd.OutOrStdout(), "  sukko status")
 	fmt.Fprintln(cmd.OutOrStdout(), "  sukko tenant list")
+
+	if cfg.Observability {
+		fmt.Fprintln(cmd.OutOrStdout(), "\nObservability:")
+		fmt.Fprintln(cmd.OutOrStdout(), "  Grafana:      http://localhost:3030")
+		fmt.Fprintln(cmd.OutOrStdout(), "  Prometheus:   http://localhost:9091")
+		fmt.Fprintln(cmd.OutOrStdout(), "  AlertManager: http://localhost:9093")
+	}
 
 	return nil
 }
@@ -163,6 +181,17 @@ func buildComposeConfig(cfg ProjectConfig) (profiles []string, envOverrides map[
 	case "nats":
 		envOverrides["MESSAGE_BACKEND"] = "nats"
 		envOverrides["NATS_JETSTREAM_URLS"] = composeNATSURL
+	}
+
+	if cfg.Observability {
+		profiles = append(profiles, "observability")
+		if cfg.Tracing {
+			envOverrides["OTEL_TRACING_ENABLED"] = "true"
+		}
+		if cfg.Profiling {
+			envOverrides["PPROF_ENABLED"] = "true"
+			envOverrides["PYROSCOPE_ENABLED"] = "true"
+		}
 	}
 
 	return profiles, envOverrides

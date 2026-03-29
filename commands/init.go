@@ -45,6 +45,28 @@ type ProjectConfig struct {
 	Database       string `json:"database"`
 	Broadcast      string `json:"broadcast"`
 	MessageBackend string `json:"message_backend"`
+	Observability  bool   `json:"observability,omitempty"`
+	Tracing        bool   `json:"tracing,omitempty"`
+	Profiling      bool   `json:"profiling,omitempty"`
+}
+
+// loadProjectConfig reads and unmarshals .sukko/config.json.
+// Returns nil (not error) if the file doesn't exist.
+func loadProjectConfig() (*ProjectConfig, error) {
+	configPath := filepath.Join(".", sukkoConfigDir, sukkoConfigFile)
+	data, err := os.ReadFile(configPath) //nolint:gosec // G304: path derived from fixed constant, not user input
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read project config: %w", err)
+	}
+
+	var cfg ProjectConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("parse project config: %w", err)
+	}
+	return &cfg, nil
 }
 
 var initCmd = &cobra.Command{
@@ -77,6 +99,26 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		cfg.MessageBackend, err = promptChoice(cmd, "Message backend", []string{"direct", "kafka", "redpanda", "nats"}, "direct")
 		if err != nil {
 			return err
+		}
+
+		obs, err := promptChoice(cmd, "Observability (Prometheus, Grafana, Tempo, Pyroscope, AlertManager)", []string{"yes", "no"}, "no")
+		if err != nil {
+			return err
+		}
+		cfg.Observability = obs == "yes"
+
+		if cfg.Observability {
+			tracing, err := promptChoice(cmd, "  Distributed tracing", []string{"yes", "no"}, "yes")
+			if err != nil {
+				return err
+			}
+			cfg.Tracing = tracing == "yes"
+
+			profiling, err := promptChoice(cmd, "  Continuous profiling", []string{"yes", "no"}, "yes")
+			if err != nil {
+				return err
+			}
+			cfg.Profiling = profiling == "yes"
 		}
 	}
 
