@@ -85,6 +85,14 @@ var statusCmd = &cobra.Command{
 			{"sukko-tester", testerURL + "/health"},
 		}
 
+		// Add observability endpoints if enabled
+		if cfg, err := loadProjectConfig(); err == nil && cfg != nil && cfg.Observability {
+			endpoints = append(endpoints,
+				struct{ name, url string }{"grafana", "http://localhost:3030/api/health"},
+				struct{ name, url string }{"prometheus", "http://localhost:9091/-/healthy"},
+			)
+		}
+
 		if len(services) == 0 {
 			// No compose — try health endpoints directly (remote mode)
 			ctx := cmd.Context()
