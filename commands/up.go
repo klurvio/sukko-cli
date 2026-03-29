@@ -24,7 +24,10 @@ const (
 	composeNATSURL        = "nats://nats:4222"
 )
 
+var pullImages bool
+
 func init() {
+	upCmd.Flags().BoolVar(&pullImages, "pull", false, "Always pull latest images before starting")
 	rootCmd.AddCommand(upCmd)
 }
 
@@ -84,7 +87,7 @@ func runUp(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("create compose manager: %w", err)
 	}
-	if err := mgr.Up(cmd.Context(), profiles, envOverrides); err != nil {
+	if err := mgr.Up(cmd.Context(), profiles, envOverrides, pullImages); err != nil {
 		return fmt.Errorf("start services: %w", err)
 	}
 

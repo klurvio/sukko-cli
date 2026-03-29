@@ -58,12 +58,16 @@ type ServiceStatus struct {
 }
 
 // Up starts services with the given profiles and environment overrides.
-func (m *Manager) Up(ctx context.Context, profiles []string, envOverrides map[string]string) error {
+// If pull is true, images are always pulled before starting (--pull always).
+func (m *Manager) Up(ctx context.Context, profiles []string, envOverrides map[string]string, pull bool) error {
 	args := m.composeArgs()
 	for _, p := range profiles {
 		args = append(args, "--profile", p)
 	}
 	args = append(args, "up", "-d")
+	if pull {
+		args = append(args, "--pull", "always")
+	}
 
 	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // G204: args built from fixed strings and validated profile names
 	cmd.Dir = m.projectDir
