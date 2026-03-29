@@ -2,6 +2,11 @@
 
 Command-line interface for the [Sukko](https://github.com/klurvio/sukko-issues) WebSocket infrastructure platform.
 
+The CLI serves two purposes:
+
+- **Local development** — spin up the full Sukko platform locally via Docker Compose (`sukko init` + `sukko up`), with optional observability stack (Prometheus, Grafana, Tempo, Pyroscope)
+- **Remote operations** — manage tenants, keys, rules, and inspect any deployed Sukko instance by switching contexts (`sukko context use staging`)
+
 ## Install
 
 ### Homebrew (macOS/Linux)
@@ -86,11 +91,10 @@ sukko grafana
 
 ## Commands
 
+### Works everywhere (local + remote)
+
 | Command | Description |
 |---------|-------------|
-| `sukko init` | Set up a CLI context |
-| `sukko context` | Switch, list, or delete contexts |
-| `sukko up` / `down` | Start/stop local dev environment (Docker Compose) |
 | `sukko tenant` | Manage tenants |
 | `sukko key` | Manage API keys |
 | `sukko token` | Generate JWT tokens |
@@ -102,14 +106,24 @@ sukko grafana
 | `sukko edition` | Show current edition, limits, and resource usage |
 | `sukko edition compare` | Compare Community, Pro, and Enterprise editions |
 | `sukko license` | Store, view, and remove license keys |
-| `sukko grafana` | Open Grafana dashboard in browser |
 | `sukko health` | Check service health |
 | `sukko status` | Show platform status |
-| `sukko logs` | View service logs |
-| `sukko test` | Run connectivity and load tests |
+| `sukko test` | Run tests via the tester service |
+| `sukko context` | Switch, list, or delete contexts |
 | `sukko config` | View/set config defaults |
 | `sukko completion` | Generate shell completions |
 | `sukko version` | Print version info |
+
+### Local development only (Docker Compose)
+
+| Command | Description |
+|---------|-------------|
+| `sukko init` | Set up local context + infrastructure selections |
+| `sukko up` | Start local dev environment (activates selected profiles) |
+| `sukko up --pull` | Pull latest images before starting |
+| `sukko down` | Stop local dev environment |
+| `sukko logs` | View Docker Compose service logs |
+| `sukko grafana` | Open Grafana dashboard in browser (requires observability) |
 
 ## Configuration
 
