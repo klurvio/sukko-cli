@@ -1,6 +1,6 @@
 # Sukko CLI
 
-Command-line interface for the [Sukko](https://github.com/klurvio/sukko) WebSocket infrastructure platform.
+Command-line interface for the [Sukko](https://github.com/klurvio/sukko-issues) WebSocket infrastructure platform.
 
 ## Install
 
