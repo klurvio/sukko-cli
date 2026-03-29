@@ -71,6 +71,19 @@ sukko edition compare
 sukko up
 ```
 
+### Observability
+
+```bash
+# Enable observability during init (Prometheus, Grafana, Tempo, Pyroscope, AlertManager)
+sukko init
+
+# Start with observability profile activated
+sukko up
+
+# Open Grafana dashboard
+sukko grafana
+```
+
 ## Commands
 
 | Command | Description |
@@ -89,6 +102,7 @@ sukko up
 | `sukko edition` | Show current edition, limits, and resource usage |
 | `sukko edition compare` | Compare Community, Pro, and Enterprise editions |
 | `sukko license` | Store, view, and remove license keys |
+| `sukko grafana` | Open Grafana dashboard in browser |
 | `sukko health` | Check service health |
 | `sukko status` | Show platform status |
 | `sukko logs` | View service logs |
