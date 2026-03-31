@@ -26,10 +26,7 @@ func composeFilePath() string {
 // Default dev credentials read from environment, falling back to docker-compose defaults.
 // These are NOT compiled secrets — they are well-known local dev values
 // that match docker-compose.yml and are overridable via env vars.
-var (
-	devAdminToken = envOrDefault("SUKKO_DEV_ADMIN_TOKEN", "sukko-dev-token")
-	devHMACSecret = envOrDefault("SUKKO_DEV_HMAC_SECRET", "sukko-dev-secret-minimum-32-bytes!!")
-)
+var devAdminToken = envOrDefault("SUKKO_DEV_ADMIN_TOKEN", "sukko-dev-token")
 
 var useDefaults bool
 
@@ -39,7 +36,7 @@ func init() {
 }
 
 // ProjectConfig stores infrastructure selections from sukko init.
-// Secrets (admin token, HMAC secret) are NOT stored here — they live
+// Secrets (admin token) are NOT stored here — they live
 // exclusively in the encrypted context store (~/.config/sukko/contexts/).
 type ProjectConfig struct {
 	Database       string `json:"database"`
@@ -151,18 +148,12 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("encrypt admin token: %w", err)
 	}
 
-	hmacEnc, err := store.EncryptSecret(devHMACSecret)
-	if err != nil {
-		return fmt.Errorf("encrypt hmac secret: %w", err)
-	}
-
 	ctx := &clicontext.Context{
 		Name:            "local",
 		GatewayURL:      defaultGatewayURL,
 		ProvisioningURL: defaultAPIURL,
 		TesterURL:       defaultTesterURL,
 		AdminTokenEnc:   tokenEnc,
-		HMACSecretEnc:   hmacEnc,
 		Environment:     "local",
 		ActiveTenant:    "local",
 	}
@@ -178,7 +169,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintln(cmd.OutOrStdout(), "Local context created and set as active.")
 	fmt.Fprintf(cmd.OutOrStdout(), "\nStack: %s + %s + %s\n", cfg.Database, cfg.Broadcast, cfg.MessageBackend)
 	if os.Getenv("SUKKO_DEV_ADMIN_TOKEN") == "" {
-		fmt.Fprintln(cmd.ErrOrStderr(), "Note: using default dev credentials. Set SUKKO_DEV_ADMIN_TOKEN and SUKKO_DEV_HMAC_SECRET for non-local environments.")
+		fmt.Fprintln(cmd.ErrOrStderr(), "Note: using default dev credentials. Set SUKKO_DEV_ADMIN_TOKEN for non-local environments.")
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), "\nRun 'sukko up' to start the local environment.")
 

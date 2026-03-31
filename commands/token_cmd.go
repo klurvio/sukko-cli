@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -15,7 +16,6 @@ var (
 	tokenGroups    []string
 	tokenScopes    []string
 	tokenTTL       time.Duration
-	tokenSecret    string
 	tokenKeyFile   string
 	tokenAlgorithm string
 )
@@ -29,9 +29,10 @@ func init() {
 	tokenGenerateCmd.Flags().StringSliceVar(&tokenGroups, "groups", nil, "Groups (repeatable)")
 	tokenGenerateCmd.Flags().StringSliceVar(&tokenScopes, "scopes", nil, "Scopes (repeatable)")
 	tokenGenerateCmd.Flags().DurationVar(&tokenTTL, "ttl", time.Hour, "Token time-to-live (e.g., 1h, 30m, 24h)")
-	tokenGenerateCmd.Flags().StringVar(&tokenSecret, "secret", "", "HMAC secret (overrides context)")
-	tokenGenerateCmd.Flags().StringVar(&tokenKeyFile, "key-file", "", "Path to PEM private key (for asymmetric algorithms)")
-	tokenGenerateCmd.Flags().StringVar(&tokenAlgorithm, "algorithm", "HS256", "Signing algorithm (HS256, ES256, RS256, EdDSA)")
+	tokenGenerateCmd.Flags().StringVar(&tokenKeyFile, "key-file", "", "Path to PEM private key")
+	tokenGenerateCmd.Flags().StringVar(&tokenAlgorithm, "algorithm", "", "Signing algorithm (ES256, RS256, EdDSA)")
+
+	tokenValidateCmd.Flags().StringVar(&tokenKeyFile, "key-file", "", "Path to PEM public key (for signature verification)")
 
 	rootCmd.AddCommand(tokenCmd)
 }
@@ -45,18 +46,29 @@ var tokenGenerateCmd = &cobra.Command{
 	Use:   "generate",
 	Short: "Generate a signed JWT token",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		secret := tokenSecret
-		if secret == "" && resolvedCtx != nil && resolvedStore != nil {
-			if s, err := resolvedCtx.HMACSecret(resolvedStore.Key()); err == nil && s != "" {
-				secret = s
+		algorithm := tokenAlgorithm
+		keyFile := tokenKeyFile
+
+		// Auto-discover stored key if no --algorithm and no --key-file
+		if algorithm == "" && keyFile == "" {
+			tenant := resolveTenant(tokenTenant)
+			if tenant != "" {
+				if path, err := loadLatestPrivateKey(tenant); err == nil && path != "" {
+					algorithm = "ES256"
+					keyFile = path
+				}
 			}
 		}
 
-		validAlgorithms := map[string]bool{
-			"HS256": true, "ES256": true, "RS256": true, "EdDSA": true,
+		if algorithm == "" || keyFile == "" {
+			return errors.New("specify --algorithm (ES256, RS256, EdDSA) and --key-file, or run 'sukko key create --generate' first. HS256 is not supported by the Sukko gateway")
 		}
-		if !validAlgorithms[tokenAlgorithm] {
-			return fmt.Errorf("invalid algorithm %q: must be one of HS256, ES256, RS256, EdDSA", tokenAlgorithm)
+
+		validAlgorithms := map[string]bool{
+			"ES256": true, "RS256": true, "EdDSA": true,
+		}
+		if !validAlgorithms[algorithm] {
+			return fmt.Errorf("invalid algorithm %q: must be one of ES256, RS256, EdDSA. HS256 is not supported by the Sukko gateway", algorithm)
 		}
 
 		tenant := resolveTenant(tokenTenant)
@@ -68,9 +80,8 @@ var tokenGenerateCmd = &cobra.Command{
 			Groups:    tokenGroups,
 			Scopes:    tokenScopes,
 			TTL:       tokenTTL,
-			Secret:    secret,
-			KeyFile:   tokenKeyFile,
-			Algorithm: tokenAlgorithm,
+			KeyFile:   keyFile,
+			Algorithm: algorithm,
 		}
 
 		tokenStr, err := clitoken.Generate(cfg)
@@ -90,18 +101,12 @@ var tokenValidateCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		tokenStr := args[0]
 
-		// Try with secret if available
-		secret := tokenSecret
-		if secret == "" && resolvedCtx != nil && resolvedStore != nil {
-			if s, err := resolvedCtx.HMACSecret(resolvedStore.Key()); err == nil && s != "" {
-				secret = s
-			}
-		}
-
 		var result *clitoken.DecodedToken
 		var err error
-		if secret != "" {
-			result, err = clitoken.ValidateWithSecret(tokenStr, secret)
+		verified := false
+		if tokenKeyFile != "" {
+			result, err = clitoken.ValidateWithKeyFile(tokenStr, tokenKeyFile)
+			verified = true
 		} else {
 			result, err = clitoken.Decode(tokenStr)
 		}
@@ -126,10 +131,10 @@ var tokenValidateCmd = &cobra.Command{
 
 		if result.Valid {
 			fmt.Fprintf(cmd.OutOrStdout(), "\nStatus: %svalid%s", colorGreen, colorReset)
-			if secret != "" {
+			if verified {
 				fmt.Fprint(cmd.OutOrStdout(), " (signature verified)")
 			} else {
-				fmt.Fprint(cmd.OutOrStdout(), " (signature not verified — no secret provided)")
+				fmt.Fprint(cmd.OutOrStdout(), " (signature not verified — use --key-file to verify)")
 			}
 			fmt.Fprintln(cmd.OutOrStdout())
 		} else {
