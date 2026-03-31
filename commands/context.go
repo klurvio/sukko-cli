@@ -75,6 +75,7 @@ var (
 	ctxTesterURL       string
 	ctxAdminToken      string
 	ctxAPIKey          string
+	ctxEnvironment     string
 	ctxTenant          string
 )
 
@@ -90,6 +91,7 @@ func init() {
 	contextCreateCmd.Flags().StringVar(&ctxProvisioningURL, "provisioning-url", "", "Provisioning API URL (e.g., https://api.example.com)")
 	contextCreateCmd.Flags().StringVar(&ctxTesterURL, "tester-url", "", "Tester service URL")
 	contextCreateCmd.Flags().StringVar(&ctxAdminToken, "admin-token", "", "Admin authentication token")
+	contextCreateCmd.Flags().StringVar(&ctxEnvironment, "environment", "", "Environment name (e.g., staging, production)")
 	contextCreateCmd.Flags().StringVar(&ctxAPIKey, "api-key", "", "API key for gateway access")
 	contextCreateCmd.Flags().StringVar(&ctxTenant, "tenant", "", "Default active tenant ID")
 	contextCreateCmd.Flags().BoolVar(&ctxForce, "force", false, "Overwrite existing context without confirmation")
@@ -182,13 +184,13 @@ func runContextList(cmd *cobra.Command, _ []string) error {
 	}
 
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "ACTIVE\tNAME\tGATEWAY\tPROVISIONING\tTENANT")
+	fmt.Fprintln(w, "ACTIVE\tNAME\tENVIRONMENT\tGATEWAY\tPROVISIONING\tTENANT")
 	for _, ctx := range contexts {
 		marker := ""
 		if ctx.Name == activeName {
 			marker = "*"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", marker, ctx.Name, ctx.GatewayURL, ctx.ProvisioningURL, ctx.ActiveTenant)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", marker, ctx.Name, ctx.Environment, ctx.GatewayURL, ctx.ProvisioningURL, ctx.ActiveTenant)
 	}
 	if err := w.Flush(); err != nil {
 		return fmt.Errorf("flush context list: %w", err)
@@ -233,6 +235,9 @@ func runContextCurrent(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintf(w, "Provisioning:\t%s\n", ctx.ProvisioningURL)
 	if ctx.TesterURL != "" {
 		fmt.Fprintf(w, "Tester:\t%s\n", ctx.TesterURL)
+	}
+	if ctx.Environment != "" {
+		fmt.Fprintf(w, "Environment:\t%s\n", ctx.Environment)
 	}
 	fmt.Fprintf(w, "Tenant:\t%s\n", ctx.ActiveTenant)
 	fmt.Fprintf(w, "Admin Token:\t%s\n", secretIndicator(ctx.AdminTokenEnc))
@@ -308,6 +313,11 @@ func runContextCreate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	environment, err := promptText(cmd, "Environment", ctxEnvironment, true)
+	if err != nil {
+		return err
+	}
+
 	// 4. Prompt optional fields
 	fmt.Fprintln(cmd.OutOrStdout(), "\nOptional (press Enter to skip):")
 
@@ -337,6 +347,7 @@ func runContextCreate(cmd *cobra.Command, args []string) error {
 		GatewayURL:      gwURL,
 		ProvisioningURL: provURL,
 		TesterURL:       testerURL,
+		Environment:     environment,
 		ActiveTenant:    tenant,
 	}
 

@@ -163,6 +163,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		TesterURL:       defaultTesterURL,
 		AdminTokenEnc:   tokenEnc,
 		HMACSecretEnc:   hmacEnc,
+		Environment:     "local",
 		ActiveTenant:    "local",
 	}
 

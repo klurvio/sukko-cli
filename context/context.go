@@ -12,6 +12,7 @@ type Context struct {
 	HMACSecretEnc   string `json:"hmac_secret_encrypted,omitempty"`
 	APIKeyEnc       string `json:"api_key_encrypted,omitempty"`
 	LicenseKeyEnc   string `json:"license_key_encrypted,omitempty"`
+	Environment     string `json:"environment,omitempty"`
 	ActiveTenant    string `json:"active_tenant,omitempty"`
 }
 
