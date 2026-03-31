@@ -9,6 +9,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -18,13 +19,15 @@ import (
 const testHTTPTimeout = 30 * time.Second
 
 var (
-	testConnections int
-	testDuration    string
-	testPublishRate int
-	testRampRate    int
-	testSuite       string
-	testTesterURL   string
-	testFollow      bool
+	testConnections    int
+	testDuration       string
+	testPublishRate    int
+	testRampRate       int
+	testSuite          string
+	testTesterURL      string
+	testFollow         bool
+	testMessageBackend string
+	testTenantFlag     string
 )
 
 func init() {
@@ -38,12 +41,14 @@ func init() {
 		cmd.Flags().IntVar(&testRampRate, "ramp-rate", 5, "Connections per second during ramp-up")
 	}
 
-	testValidateCmd.Flags().StringVar(&testSuite, "suite", "auth", "Validation suite (auth, channels, ordering)")
+	testValidateCmd.Flags().StringVar(&testSuite, "suite", "auth", "Validation suite (auth, channels, ordering, provisioning, tenant-isolation)")
 
-	// Tester URL on all subcommands
+	// Flags on all subcommands
 	for _, cmd := range []*cobra.Command{testSmokeCmd, testLoadCmd, testStressCmd, testSoakCmd, testValidateCmd} {
 		cmd.Flags().StringVar(&testTesterURL, "tester-url", "", "Tester service URL (overrides context)")
 		cmd.Flags().BoolVarP(&testFollow, "follow", "f", false, "Stream metrics in real-time")
+		cmd.Flags().StringVar(&testMessageBackend, "message-backend", "", "Publisher backend (direct, kafka, nats)")
+		cmd.Flags().StringVar(&testTenantFlag, "tenant", "", "Tenant ID (uses active tenant from context if not set)")
 	}
 
 	rootCmd.AddCommand(testCmd)
@@ -111,6 +116,79 @@ var testValidateCmd = &cobra.Command{
 	},
 }
 
+// isLocalContext returns true if the context URLs point to localhost.
+// Local dev contexts use Docker-internal URLs in the tester — context passthrough
+// would send unreachable localhost URLs to the tester container.
+func isLocalContext() bool {
+	if resolvedCtx == nil {
+		return false
+	}
+	for _, raw := range []string{resolvedCtx.GatewayURL, resolvedCtx.ProvisioningURL} {
+		if u, err := url.Parse(raw); err == nil {
+			host := u.Hostname()
+			if host == "localhost" || host == "127.0.0.1" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// buildTestContext assembles the context block for the tester API.
+// Returns nil if context should not be sent (local dev or incomplete).
+func buildTestContext(messageBackend string) (map[string]any, error) {
+	if resolvedCtx == nil || resolvedStore == nil {
+		return nil, nil // no context available — tester uses own env vars
+	}
+	if isLocalContext() {
+		return nil, nil // local dev — tester uses Docker-internal URLs
+	}
+
+	adminToken, err := resolvedCtx.AdminToken(resolvedStore.Key())
+	if err != nil {
+		return nil, fmt.Errorf("decrypt admin token for test context: %w", err)
+	}
+
+	// Validate core fields (all-or-nothing)
+	if resolvedCtx.GatewayURL == "" {
+		return nil, errors.New("incomplete context: gateway URL is required")
+	}
+	if resolvedCtx.ProvisioningURL == "" {
+		return nil, errors.New("incomplete context: provisioning URL is required")
+	}
+	if adminToken == "" {
+		return nil, errors.New("incomplete context: admin token is required")
+	}
+	if resolvedCtx.Environment == "" {
+		return nil, errors.New("incomplete context: environment is required (run 'sukko context create' to set it)")
+	}
+
+	ctx := map[string]any{
+		"gateway_url":      resolvedCtx.GatewayURL,
+		"provisioning_url": resolvedCtx.ProvisioningURL,
+		"admin_token":      adminToken,
+		"environment":      resolvedCtx.Environment,
+	}
+
+	// Message backend URLs (required for kafka/nats)
+	switch messageBackend {
+	case "kafka":
+		brokers := os.Getenv("KAFKA_BROKERS")
+		if brokers == "" {
+			return nil, errors.New("incomplete context: KAFKA_BROKERS env var is required when --message-backend=kafka")
+		}
+		ctx["message_backend_urls"] = brokers
+	case "nats":
+		natsURLs := os.Getenv("NATS_JETSTREAM_URLS")
+		if natsURLs == "" {
+			return nil, errors.New("incomplete context: NATS_JETSTREAM_URLS env var is required when --message-backend=nats")
+		}
+		ctx["message_backend_urls"] = natsURLs
+	}
+
+	return ctx, nil
+}
+
 func runTest(cmd *cobra.Command, testType string, extra map[string]any) error {
 	testerURL := resolveTesterURL(testTesterURL)
 	_, tok, err := resolveClientConfig()
@@ -120,6 +198,23 @@ func runTest(cmd *cobra.Command, testType string, extra map[string]any) error {
 
 	body := map[string]any{"type": testType}
 	maps.Copy(body, extra)
+
+	// Tenant passthrough
+	if tenant := resolveTenant(testTenantFlag); tenant != "" {
+		body["tenant_id"] = tenant
+	}
+
+	// Message backend passthrough
+	if testMessageBackend != "" {
+		body["message_backend"] = testMessageBackend
+	}
+
+	// Context passthrough (remote only)
+	if testCtx, err := buildTestContext(testMessageBackend); err != nil {
+		return fmt.Errorf("build test context: %w", err)
+	} else if testCtx != nil {
+		body["context"] = testCtx
+	}
 
 	data, err := json.Marshal(body)
 	if err != nil {
