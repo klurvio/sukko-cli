@@ -42,7 +42,7 @@ func TestContextCreateCmd_Registration(t *testing.T) {
 	}
 
 	// Verify key flags exist
-	for _, flagName := range []string{"provisioning-url", "gateway-url", "admin-token", "force"} {
+	for _, flagName := range []string{"provisioning-url", "gateway-url", "admin-token", "environment", "force"} {
 		if contextCreateCmd.Flags().Lookup(flagName) == nil {
 			t.Errorf("missing flag --%s", flagName)
 		}
