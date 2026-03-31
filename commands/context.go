@@ -331,7 +331,7 @@ func runContextCreate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	apiKey, err := promptSecret(cmd, "  API key", "api-key", ctxAPIKey)
+	apiKey, err := promptSecret(cmd, "  API key (required for subscribe/publish, Enter to skip)", "api-key", ctxAPIKey)
 	if err != nil {
 		return err
 	}

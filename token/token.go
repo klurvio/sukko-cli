@@ -17,10 +17,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-const (
-	defaultAlgorithm = "HS256"
-	defaultTTL       = time.Hour
-)
+const defaultTTL = time.Hour
 
 // GenerateConfig configures token generation.
 type GenerateConfig struct {
@@ -30,9 +27,8 @@ type GenerateConfig struct {
 	Groups    []string
 	Scopes    []string
 	TTL       time.Duration
-	Secret    string // HMAC secret
-	KeyFile   string // path to PEM private key (asymmetric)
-	Algorithm string // HS256, ES256, RS256, EdDSA
+	KeyFile   string // path to PEM private key
+	Algorithm string // ES256, RS256, EdDSA
 }
 
 // DecodedToken represents a decoded (but not necessarily verified) JWT.
@@ -43,10 +39,13 @@ type DecodedToken struct {
 	Error  string         `json:"error,omitempty"`
 }
 
-// Generate creates a signed JWT token.
+// Generate creates a signed JWT token using an asymmetric private key.
 func Generate(cfg GenerateConfig) (string, error) {
 	if cfg.Algorithm == "" {
-		cfg.Algorithm = defaultAlgorithm
+		return "", errors.New("algorithm is required (ES256, RS256, EdDSA)")
+	}
+	if cfg.KeyFile == "" {
+		return "", errors.New("key file is required")
 	}
 	if cfg.TTL == 0 {
 		cfg.TTL = defaultTTL
@@ -81,7 +80,7 @@ func Generate(cfg GenerateConfig) (string, error) {
 
 	token := jwt.NewWithClaims(method, claims)
 
-	key, err := signingKey(cfg)
+	key, err := loadPrivateKey(cfg.KeyFile)
 	if err != nil {
 		return "", err
 	}
@@ -94,8 +93,7 @@ func Generate(cfg GenerateConfig) (string, error) {
 	return signed, nil
 }
 
-// Decode decodes a JWT without verifying the signature. Use ValidateWithSecret
-// for cryptographic verification.
+// Decode decodes a JWT without verifying the signature.
 func Decode(tokenString string) (*DecodedToken, error) {
 	if tokenString == "" {
 		return nil, errors.New("token string is required")
@@ -131,20 +129,23 @@ func Decode(tokenString string) (*DecodedToken, error) {
 	return result, nil
 }
 
-// ValidateWithSecret verifies a JWT using an HMAC secret.
-func ValidateWithSecret(tokenString, secret string) (*DecodedToken, error) {
+// ValidateWithKeyFile verifies a JWT using a PEM public key file.
+// Determines the algorithm from the token header.
+func ValidateWithKeyFile(tokenString, keyFilePath string) (*DecodedToken, error) {
 	if tokenString == "" {
 		return nil, errors.New("token string is required")
 	}
-	if secret == "" {
-		return nil, errors.New("secret is required for HMAC validation")
+	if keyFilePath == "" {
+		return nil, errors.New("key file path is required")
+	}
+
+	pubKey, err := loadPublicKey(keyFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("load public key: %w", err)
 	}
 
 	token, err := jwt.Parse(tokenString, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-		}
-		return []byte(secret), nil
+		return pubKey, nil
 	})
 
 	result := &DecodedToken{
@@ -167,12 +168,6 @@ func ValidateWithSecret(tokenString, secret string) (*DecodedToken, error) {
 
 func signingMethod(algorithm string) (jwt.SigningMethod, error) {
 	switch algorithm {
-	case "HS256":
-		return jwt.SigningMethodHS256, nil
-	case "HS384":
-		return jwt.SigningMethodHS384, nil
-	case "HS512":
-		return jwt.SigningMethodHS512, nil
 	case "ES256":
 		return jwt.SigningMethodES256, nil
 	case "ES384":
@@ -187,26 +182,6 @@ func signingMethod(algorithm string) (jwt.SigningMethod, error) {
 		return jwt.SigningMethodEdDSA, nil
 	default:
 		return nil, fmt.Errorf("unsupported algorithm: %s", algorithm)
-	}
-}
-
-func signingKey(cfg GenerateConfig) (any, error) {
-	if cfg.Secret != "" && cfg.KeyFile != "" {
-		return nil, errors.New("cannot specify both --secret and --key-file")
-	}
-
-	switch {
-	case cfg.Secret != "":
-		switch cfg.Algorithm {
-		case "HS256", "HS384", "HS512", "":
-			return []byte(cfg.Secret), nil
-		default:
-			return nil, fmt.Errorf("--secret can only be used with HMAC algorithms (HS256/HS384/HS512), not %s", cfg.Algorithm)
-		}
-	case cfg.KeyFile != "":
-		return loadPrivateKey(cfg.KeyFile)
-	default:
-		return nil, errors.New("either --secret or --key-file is required")
 	}
 }
 
@@ -236,6 +211,25 @@ func loadPrivateKey(path string) (crypto.PrivateKey, error) {
 	}
 
 	return nil, fmt.Errorf("unsupported key format in %s (pkcs8: %w, ec: %w, pkcs1: %w)", path, pkcs8Err, ecErr, rsaErr)
+}
+
+func loadPublicKey(path string) (crypto.PublicKey, error) {
+	data, err := os.ReadFile(path) //nolint:gosec // G304: CLI reads user-specified key file path
+	if err != nil {
+		return nil, fmt.Errorf("read public key file: %w", err)
+	}
+
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return nil, fmt.Errorf("no PEM block found in %s", path)
+	}
+
+	key, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse public key: %w", err)
+	}
+
+	return key, nil
 }
 
 func mapFromClaims(claims jwt.MapClaims) map[string]any {

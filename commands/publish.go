@@ -95,23 +95,20 @@ func wsDialOpts(token, apiKey string) []client.DialOption {
 }
 
 // resolveWSAuth resolves WebSocket auth from flags, then context.
+// API key is checked first (primary auth for CLI WebSocket connections).
+// Admin token is NOT used — it's for the provisioning REST API, not gateway WebSocket.
 func resolveWSAuth(tokenFlag, apiKeyFlag string) (tok, apiKey string) {
 	tok = tokenFlag
 	apiKey = apiKeyFlag
 
-	if resolvedCtx != nil && resolvedStore != nil {
-		if tok == "" {
-			// Try HMAC secret to generate a token, otherwise check for API key
-			if t, err := resolvedCtx.AdminToken(resolvedStore.Key()); err == nil && t != "" {
-				tok = t
-			}
-		}
-		if apiKey == "" {
-			if k, err := resolvedCtx.APIKey(resolvedStore.Key()); err == nil && k != "" {
-				apiKey = k
-			}
+	// API key from context (primary auth for CLI WebSocket)
+	if apiKey == "" && resolvedCtx != nil && resolvedStore != nil {
+		if k, err := resolvedCtx.APIKey(resolvedStore.Key()); err == nil && k != "" {
+			apiKey = k
 		}
 	}
+
+	// No admin token fallback — admin token is for provisioning API only
 
 	return tok, apiKey
 }
