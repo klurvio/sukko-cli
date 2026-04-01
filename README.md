@@ -76,6 +76,45 @@ sukko edition compare
 sukko up
 ```
 
+### Remote Contexts
+
+```bash
+# Create a context for a remote deployment (interactive, secrets masked)
+sukko context create
+
+# Switch between environments
+sukko context use staging
+sukko tenant list
+```
+
+### Authentication
+
+```bash
+# API key auth (primary method for subscribe/publish)
+sukko key create --tenant <tenant-id> --generate   # generates ES256 key pair
+sukko subscribe --channel chat                      # uses API key from context
+
+# JWT auth (full production auth path)
+sukko key create --generate --tenant local          # generate + register key pair
+sukko token generate --tenant local --sub user      # auto-discovers stored key
+sukko subscribe --channel chat --token <jwt>        # gateway validates JWT
+```
+
+### Testing
+
+The built-in tester service (included in Sukko deployments) runs smoke, load, stress, and validation tests. The CLI delegates test execution to the tester via its REST API.
+
+```bash
+# Run tests (CLI passes deployment context to tester automatically)
+sukko test smoke
+sukko test load --connections 100 --duration 5m
+sukko test validate --suite auth
+sukko test validate --suite provisioning
+
+# Test with a specific message backend
+sukko test load --message-backend=kafka --connections 50
+```
+
 ### Observability
 
 ```bash
@@ -96,8 +135,8 @@ sukko grafana
 | Command | Description |
 |---------|-------------|
 | `sukko tenant` | Manage tenants |
-| `sukko key` | Manage API keys |
-| `sukko token` | Generate JWT tokens |
+| `sukko key` | Manage signing keys (`--generate` for ES256 key pair) |
+| `sukko token` | Generate and validate JWT tokens |
 | `sukko subscribe` | Subscribe to WebSocket channels |
 | `sukko publish` | Publish messages to channels |
 | `sukko connections` | List active connections |
@@ -108,8 +147,8 @@ sukko grafana
 | `sukko license` | Store, view, and remove license keys |
 | `sukko health` | Check service health |
 | `sukko status` | Show platform status |
-| `sukko test` | Run tests via the tester service |
-| `sukko context` | Switch, list, or delete contexts |
+| `sukko test` | Run smoke, load, stress, and validation tests |
+| `sukko context` | Create, switch, list, or delete contexts |
 | `sukko config` | View/set config defaults |
 | `sukko completion` | Generate shell completions |
 | `sukko version` | Print version info |
@@ -139,12 +178,14 @@ Resolution order: **flags > context > environment variables > defaults**.
 
 ### Contexts
 
-Contexts store per-environment configuration (URLs, encrypted credentials, license keys). Switch between environments with `sukko context use <name>`.
+Contexts store per-environment configuration (URLs, encrypted credentials, license keys).
 
 ```bash
-sukko init                    # creates "local" context
+sukko init                    # creates "local" context with dev defaults
+sukko context create          # create a remote context (interactive, secrets masked)
 sukko context list            # list all contexts
 sukko context use staging     # switch to staging
+sukko context current         # show active context details
 ```
 
 ## License
