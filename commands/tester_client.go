@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -52,8 +53,12 @@ func NewTesterClient(baseURL string) *TesterClient {
 
 // Capabilities fetches the tester's capabilities.
 // Returns an error if the tester is unreachable.
-func (c *TesterClient) Capabilities() (*TesterCapabilities, error) {
-	resp, err := c.http.Get(c.baseURL + "/api/v1/capabilities")
+func (c *TesterClient) Capabilities(ctx context.Context) (*TesterCapabilities, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v1/capabilities", http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("create capabilities request: %w", err)
+	}
+	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("cannot connect to tester at %s. Is it running? (%w)", c.baseURL, err)
 	}

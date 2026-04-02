@@ -3,6 +3,7 @@ package commands
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -415,7 +416,7 @@ func completeSuites(_ *cobra.Command, _ []string, _ string) ([]string, cobra.She
 	}
 
 	client := NewTesterClient(testerURL)
-	caps, err := client.Capabilities()
+	caps, err := client.Capabilities(context.Background())
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}

@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -32,7 +33,7 @@ func TestTesterClient_Capabilities_Success(t *testing.T) {
 	defer srv.Close()
 
 	client := NewTesterClient(srv.URL)
-	got, err := client.Capabilities()
+	got, err := client.Capabilities(context.Background())
 	if err != nil {
 		t.Fatalf("Capabilities(): %v", err)
 	}
@@ -52,7 +53,7 @@ func TestTesterClient_Capabilities_Unreachable(t *testing.T) {
 	t.Parallel()
 
 	client := NewTesterClient("http://localhost:59999")
-	_, err := client.Capabilities()
+	_, err := client.Capabilities(context.Background())
 	if err == nil {
 		t.Fatal("expected error for unreachable tester")
 	}
@@ -71,7 +72,7 @@ func TestTesterClient_Capabilities_InvalidJSON(t *testing.T) {
 	defer srv.Close()
 
 	client := NewTesterClient(srv.URL)
-	_, err := client.Capabilities()
+	_, err := client.Capabilities(context.Background())
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
