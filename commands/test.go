@@ -41,7 +41,8 @@ func init() {
 		cmd.Flags().IntVar(&testRampRate, "ramp-rate", 5, "Connections per second during ramp-up")
 	}
 
-	testValidateCmd.Flags().StringVar(&testSuite, "suite", "auth", "Validation suite (auth, channels, ordering, provisioning, tenant-isolation)")
+	testValidateCmd.Flags().StringVar(&testSuite, "suite", "auth", "Validation suite (fetch available suites from tester via --help)")
+	_ = testValidateCmd.RegisterFlagCompletionFunc("suite", completeSuites)
 
 	// Flags on all subcommands
 	for _, cmd := range []*cobra.Command{testSmokeCmd, testLoadCmd, testStressCmd, testSoakCmd, testValidateCmd} {
@@ -108,7 +109,7 @@ var testSoakCmd = &cobra.Command{
 
 var testValidateCmd = &cobra.Command{
 	Use:   "validate",
-	Short: "Run validation suites (auth, channels, ordering)",
+	Short: "Run validation suites",
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return runTest(cmd, "validate", map[string]any{
 			"suite": testSuite,
@@ -403,4 +404,25 @@ func printTestReport(cmd *cobra.Command, data string) {
 			fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", e)
 		}
 	}
+}
+
+// completeSuites provides dynamic tab completion for --suite by fetching
+// capabilities from the running tester.
+func completeSuites(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	testerURL := resolveTesterURL(testTesterURL)
+	if testerURL == "" {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	client := NewTesterClient(testerURL)
+	caps, err := client.Capabilities()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+
+	names := make([]string, len(caps.Suites))
+	for i, s := range caps.Suites {
+		names[i] = s.Name
+	}
+	return names, cobra.ShellCompDirectiveNoFileComp
 }

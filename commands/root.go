@@ -63,6 +63,9 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Enable verbose output")
 }
 
+// RootCmd returns the root cobra command for external tools (e.g., gendocs).
+func RootCmd() *cobra.Command { return rootCmd }
+
 // Execute runs the root command.
 func Execute() error {
 	if err := rootCmd.Execute(); err != nil {
