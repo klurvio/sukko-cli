@@ -15,15 +15,14 @@
 # Stop:  docker compose down
 # Reset: docker compose down -v
 #
-# Default mode: direct + NATS broadcast + SQLite (zero config needed)
+# Default mode: direct + NATS broadcast + PostgreSQL (zero config needed)
 # All application config uses Go envDefault values.
 # Only inter-service wiring env vars are set here.
 #
 # Optional infrastructure (activate via Docker Compose profiles):
 #   docker compose --profile kafka up         # Redpanda (Kafka)
-#   docker compose --profile postgres up      # PostgreSQL
 #   docker compose --profile valkey up        # Valkey (Redis-compatible)
-#   docker compose --profile kafka --profile postgres up  # combine profiles
+#   docker compose --profile kafka --profile valkey up  # combine profiles
 
 services:
   # ─── NATS (broadcast bus) ──────────────────────────────────────────
@@ -38,6 +37,17 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+  # ─── Database Migration ────────────────────────────────────────────
+  migrate:
+    image: arigaio/atlas:0.31.0
+    command: >
+      migrate apply --dir file:///migrations --url postgres://sukko:sukko@postgres:5432/sukko?sslmode=disable
+
+    volumes:
+      - ./ws/internal/shared/migrations/postgres:/migrations
+    depends_on:
+      postgres:
+        condition: service_healthy
   # ─── Provisioning API ─────────────────────────────────────────────
   provisioning:
     image: ghcr.io/klurvio/sukko-provisioning:latest
@@ -46,15 +56,17 @@ services:
       - "9090:9090"
     environment:
       PROVISIONING_ADMIN_TOKEN: "sukko-dev-token"
-      DATABASE_PATH: /data/sukko.db
+      DATABASE_URL: "postgres://sukko:sukko@postgres:5432/sukko?sslmode=disable"
+      SUKKO_LICENSE_KEY: "${SUKKO_LICENSE_KEY:-}"
       # Observability (disabled by default, enable with OTEL_TRACING_ENABLED=true)
       OTEL_TRACING_ENABLED: "${OTEL_TRACING_ENABLED:-false}"
       OTEL_EXPORTER_ENDPOINT: "tempo:4317"
       PPROF_ENABLED: "${PPROF_ENABLED:-false}"
       PYROSCOPE_ENABLED: "${PYROSCOPE_ENABLED:-false}"
       PYROSCOPE_ADDR: "http://pyroscope:4040"
-    volumes:
-      - provisioning-data:/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
       interval: 5s
@@ -70,6 +82,7 @@ services:
       # Inter-service wiring (only overrides needed)
       NATS_URLS: "nats://nats:4222"
       PROVISIONING_GRPC_ADDR: "provisioning:9090"
+      SUKKO_LICENSE_KEY: "${SUKKO_LICENSE_KEY:-}"
       # Observability (disabled by default, enable with OTEL_TRACING_ENABLED=true)
       OTEL_TRACING_ENABLED: "${OTEL_TRACING_ENABLED:-false}"
       OTEL_EXPORTER_ENDPOINT: "tempo:4317"
@@ -96,6 +109,9 @@ services:
       # Inter-service wiring (only overrides needed)
       GATEWAY_BACKEND_URL: "ws://ws-server:3005/ws"
       PROVISIONING_GRPC_ADDR: "provisioning:9090"
+      SERVER_GRPC_ADDR: "ws-server:3006"
+      PUSH_GRPC_ADDR: "push-service:3008"
+      SUKKO_LICENSE_KEY: "${SUKKO_LICENSE_KEY:-}"
       # Observability (disabled by default, enable with OTEL_TRACING_ENABLED=true)
       OTEL_TRACING_ENABLED: "${OTEL_TRACING_ENABLED:-false}"
       OTEL_EXPORTER_ENDPOINT: "tempo:4317"
@@ -111,6 +127,35 @@ services:
       timeout: 3s
       retries: 10
       start_period: 10s
+  # ─── Push Service — activate with: --profile enterprise --profile kafka ──
+  push-service:
+    profiles: ["enterprise"]
+    ports:
+      - "3008:3008"
+      - "3009:3009"
+    environment:
+      PUSH_DRY_RUN: "true"
+      MESSAGE_BACKEND: kafka
+      DATABASE_URL: "postgres://sukko:sukko@postgres:5432/sukko?sslmode=disable"
+      PROVISIONING_GRPC_ADDR: "provisioning:9090"
+      KAFKA_BROKERS: "redpanda:9092"
+      PUSH_GRPC_PORT: "3008"
+      PUSH_HTTP_PORT: "3009"
+      ENVIRONMENT: local
+      SUKKO_LICENSE_KEY: "${SUKKO_LICENSE_KEY:-}"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      provisioning:
+        condition: service_healthy
+      redpanda:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3009/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
   # ─── Tester Service ────────────────────────────────────────────────
   sukko-tester:
     image: ghcr.io/klurvio/sukko-tester:latest
@@ -149,16 +194,15 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-  # ─── PostgreSQL — activate with: --profile postgres ─────────────────
+  # ─── PostgreSQL ─────────────────────────────────────────────────────
   postgres:
-    profiles: ["postgres"]
     image: postgres:16-alpine
     ports:
       - "5432:5432"
     environment:
       POSTGRES_USER: sukko
       POSTGRES_PASSWORD: sukko
-      POSTGRES_DB: sukko_provisioning
+      POSTGRES_DB: sukko
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -392,5 +436,4 @@ configs:
           url: http://pyroscope:4040
           editable: false
 volumes:
-  provisioning-data:
   postgres-data:
