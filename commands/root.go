@@ -2,8 +2,13 @@
 package commands
 
 import (
+	"crypto/ed25519"
+	"crypto/x509"
+	"encoding/pem"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -74,16 +79,16 @@ func Execute() error {
 	return nil
 }
 
-// newClient creates an AdminClient resolving config from: flags > context > env > defaults.
+// newClient creates an AdminClient with keypair JWT auth.
 func newClient() (*client.AdminClient, error) {
-	url, tok, err := resolveClientConfig()
+	url, signer, err := resolveProvisioningConfig()
 	if err != nil {
-		return nil, fmt.Errorf("resolve client config: %w", err)
+		return nil, fmt.Errorf("resolve provisioning config: %w", err)
 	}
 
 	c, err := client.New(client.Config{
 		BaseURL: url,
-		Token:   tok,
+		Signer:  signer,
 		Timeout: client.DefaultClientTimeout,
 	})
 	if err != nil {
@@ -92,34 +97,93 @@ func newClient() (*client.AdminClient, error) {
 	return c, nil
 }
 
-// resolveClientConfig returns the API URL and token, preferring flags over context.
-func resolveClientConfig() (url, tok string, err error) {
-	url = apiURL
-	tok = token
-
-	// If no flags given, try context
-	if resolvedCtx != nil && resolvedStore != nil {
-		if url == "" {
-			url = resolvedCtx.ProvisioningURL
-		}
-		if tok == "" {
-			t, decErr := resolvedCtx.AdminToken(resolvedStore.Key())
-			if decErr != nil {
-				return "", "", fmt.Errorf("decrypt admin token: %w", decErr)
-			}
-			if t == "" {
-				return "", "", fmt.Errorf("admin token is empty in context %q — re-run 'sukko init'", resolvedCtx.Name)
-			}
-			tok = t
-		}
+// resolveProvisioningConfig returns the provisioning URL and admin auth signer.
+func resolveProvisioningConfig() (string, client.AuthSigner, error) {
+	url := apiURL
+	if url == "" && resolvedCtx != nil {
+		url = resolvedCtx.ProvisioningURL
 	}
-
-	// Final fallback
 	if url == "" {
 		url = defaultAPIURL
 	}
 
-	return url, tok, nil
+	signer, err := loadAdminSigner()
+	if err != nil {
+		return "", nil, fmt.Errorf("load admin keypair: %w", err)
+	}
+
+	return url, signer, nil
+}
+
+// resolveTesterToken returns the tester API auth token (separate from provisioning admin auth).
+func resolveTesterToken() string {
+	return envOrDefault("SUKKO_TESTER_TOKEN", "")
+}
+
+// loadAdminSigner loads the admin Ed25519 private key from the active context directory.
+func loadAdminSigner() (client.AuthSigner, error) {
+	keyPath := resolveAdminKeyPath()
+	if keyPath == "" {
+		return nil, nil // no keypair yet — run 'sukko auth keygen'
+	}
+
+	data, err := os.ReadFile(keyPath) //nolint:gosec // G304: path derived from context directory, not user input
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read admin key %s: %w", keyPath, err)
+	}
+
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return nil, fmt.Errorf("invalid PEM in %s", keyPath)
+	}
+
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse admin private key: %w", err)
+	}
+
+	edKey, ok := key.(ed25519.PrivateKey)
+	if !ok {
+		return nil, errors.New("admin key is not Ed25519")
+	}
+
+	// Key ID: read from admin.kid file if it exists
+	kidPath := strings.TrimSuffix(keyPath, filepath.Ext(keyPath)) + ".kid"
+	kid := "unknown"
+	if kidData, err := os.ReadFile(kidPath); err == nil { //nolint:gosec // G304: path derived from context directory
+		kid = strings.TrimSpace(string(kidData))
+	}
+
+	name := "admin"
+	if resolvedCtx != nil {
+		name = resolvedCtx.Name
+	}
+
+	return client.NewKeypairSigner(edKey, kid, name), nil
+}
+
+// resolveAdminKeyPath returns the path to the admin private key file.
+func resolveAdminKeyPath() string {
+	if resolvedCtx != nil && resolvedStore != nil {
+		keyPath := filepath.Join(resolvedStore.Dir(), resolvedCtx.Name, "admin.key")
+		if _, err := os.Stat(keyPath); err == nil {
+			return keyPath
+		}
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	keyPath := filepath.Join(home, ".sukko", "admin.key")
+	if _, err := os.Stat(keyPath); err == nil {
+		return keyPath
+	}
+
+	return ""
 }
 
 // resolveTenant returns the tenant ID from: --tenant flag > context > empty.

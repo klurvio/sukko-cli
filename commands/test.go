@@ -146,20 +146,12 @@ func buildTestContext(messageBackend string) (map[string]any, error) {
 		return nil, nil // local dev — tester uses Docker-internal URLs
 	}
 
-	adminToken, err := resolvedCtx.AdminToken(resolvedStore.Key())
-	if err != nil {
-		return nil, fmt.Errorf("decrypt admin token for test context: %w", err)
-	}
-
 	// Validate core fields (all-or-nothing)
 	if resolvedCtx.GatewayURL == "" {
 		return nil, errors.New("incomplete context: gateway URL is required")
 	}
 	if resolvedCtx.ProvisioningURL == "" {
 		return nil, errors.New("incomplete context: provisioning URL is required")
-	}
-	if adminToken == "" {
-		return nil, errors.New("incomplete context: admin token is required")
 	}
 	if resolvedCtx.Environment == "" {
 		return nil, errors.New("incomplete context: environment is required (run 'sukko context create' to set it)")
@@ -168,7 +160,7 @@ func buildTestContext(messageBackend string) (map[string]any, error) {
 	ctx := map[string]any{
 		"gateway_url":      resolvedCtx.GatewayURL,
 		"provisioning_url": resolvedCtx.ProvisioningURL,
-		"admin_token":      adminToken,
+		"admin_key_path":   resolveAdminKeyPath(),
 		"environment":      resolvedCtx.Environment,
 	}
 
@@ -193,10 +185,7 @@ func buildTestContext(messageBackend string) (map[string]any, error) {
 
 func runTest(cmd *cobra.Command, testType string, extra map[string]any) error {
 	testerURL := resolveTesterURL(testTesterURL)
-	_, tok, err := resolveClientConfig()
-	if err != nil {
-		return fmt.Errorf("resolve client config: %w", err)
-	}
+	tok := resolveTesterToken()
 
 	body := map[string]any{"type": testType}
 	maps.Copy(body, extra)

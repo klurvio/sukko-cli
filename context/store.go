@@ -222,6 +222,11 @@ func (s *Store) Key() []byte {
 	return cp
 }
 
+// Dir returns the base contexts directory path.
+func (s *Store) Dir() string {
+	return s.dir
+}
+
 func (s *Store) contextPath(name string) string {
 	return filepath.Join(s.dir, name+".json")
 }

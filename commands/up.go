@@ -59,8 +59,8 @@ func runUp(cmd *cobra.Command, _ []string) error {
 	if resolvedCtx == nil {
 		return errors.New("no active context found — run 'sukko init' first")
 	}
-	if _, _, err := resolveClientConfig(); err != nil {
-		fmt.Fprintln(cmd.ErrOrStderr(), "Hint: run 'sukko init' to reset credentials")
+	if _, _, err := resolveProvisioningConfig(); err != nil {
+		fmt.Fprintln(cmd.ErrOrStderr(), "Hint: run 'sukko init' to set up admin keypair")
 		return fmt.Errorf("resolve credentials: %w", err)
 	}
 
