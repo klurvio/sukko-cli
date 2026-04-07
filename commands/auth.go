@@ -73,7 +73,7 @@ var authKeygenCmd = &cobra.Command{
 
 		// Save public key (raw base64 — the format ADMIN_BOOTSTRAP_KEY accepts)
 		pubBase64 := base64.StdEncoding.EncodeToString(pub)
-		if err := os.WriteFile(pubPath, []byte(pubBase64+"\n"), 0o644); err != nil {
+		if err := os.WriteFile(pubPath, []byte(pubBase64+"\n"), 0o600); err != nil {
 			return fmt.Errorf("write public key: %w", err)
 		}
 
@@ -95,7 +95,7 @@ var authRegisterCmd = &cobra.Command{
 
 		// Read public key
 		pubPath := filepath.Join(resolveKeypairDir(), "admin.pub")
-		pubData, err := os.ReadFile(pubPath)
+		pubData, err := os.ReadFile(pubPath) //nolint:gosec // G304: path derived from context directory, not user input
 		if err != nil {
 			return fmt.Errorf("read public key %s: %w (run 'sukko auth keygen' first)", pubPath, err)
 		}
@@ -130,7 +130,7 @@ var authRegisterCmd = &cobra.Command{
 
 		// Save key ID for JWT signing
 		kidPath := filepath.Join(resolveKeypairDir(), "admin.kid")
-		_ = os.WriteFile(kidPath, []byte(keyID+"\n"), 0o644) // best-effort: kid file is optional
+		_ = os.WriteFile(kidPath, []byte(keyID+"\n"), 0o600) // best-effort: kid file is optional
 
 		return nil
 	},

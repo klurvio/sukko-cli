@@ -127,7 +127,7 @@ func loadAdminSigner() (client.AuthSigner, error) {
 		return nil, nil // no keypair yet — run 'sukko auth keygen'
 	}
 
-	data, err := os.ReadFile(keyPath)
+	data, err := os.ReadFile(keyPath) //nolint:gosec // G304: path derived from context directory, not user input
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -153,7 +153,7 @@ func loadAdminSigner() (client.AuthSigner, error) {
 	// Key ID: read from admin.kid file if it exists
 	kidPath := strings.TrimSuffix(keyPath, filepath.Ext(keyPath)) + ".kid"
 	kid := "unknown"
-	if kidData, err := os.ReadFile(kidPath); err == nil {
+	if kidData, err := os.ReadFile(kidPath); err == nil { //nolint:gosec // G304: path derived from context directory
 		kid = strings.TrimSpace(string(kidData))
 	}
 
