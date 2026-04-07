@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -146,7 +147,7 @@ func loadAdminSigner() (client.AuthSigner, error) {
 
 	edKey, ok := key.(ed25519.PrivateKey)
 	if !ok {
-		return nil, fmt.Errorf("admin key is not Ed25519")
+		return nil, errors.New("admin key is not Ed25519")
 	}
 
 	// Key ID: read from admin.kid file if it exists

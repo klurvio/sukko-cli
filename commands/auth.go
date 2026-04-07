@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,7 +39,7 @@ var authKeygenCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		dir := resolveKeypairDir()
 		if dir == "" {
-			return fmt.Errorf("no context directory available — run 'sukko init' first")
+			return errors.New("no context directory available — run 'sukko init' first")
 		}
 
 		keyPath := filepath.Join(dir, "admin.key")
