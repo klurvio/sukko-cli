@@ -81,7 +81,7 @@ var configViewCmd = &cobra.Command{
 	Use:   "view",
 	Short: "Fetch active configuration from a running service",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		url, _, err := resolveClientConfig()
+		url, _, err := resolveProvisioningConfig()
 		if err != nil {
 			return err
 		}

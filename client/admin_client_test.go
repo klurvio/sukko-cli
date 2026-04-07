@@ -2,14 +2,26 @@ package client
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
+
+func testSigner(t *testing.T) *KeypairSigner {
+	t.Helper()
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate test keypair: %v", err)
+	}
+	return NewKeypairSigner(priv, "test-kid", "tester")
+}
 
 func TestAdminClient_Tenants(t *testing.T) {
 	t.Parallel()
@@ -133,7 +145,7 @@ func TestAdminClient_Tenants(t *testing.T) {
 
 			client, _ := New(Config{
 				BaseURL: srv.URL,
-				Token:   "test-token",
+				Signer:  testSigner(t),
 			})
 
 			result, err := tt.call(context.Background(), client)
@@ -262,7 +274,7 @@ func TestAdminClient_Keys(t *testing.T) {
 
 			client, _ := New(Config{
 				BaseURL: srv.URL,
-				Token:   "test-token",
+				Signer:  testSigner(t),
 			})
 
 			result, err := tt.call(context.Background(), client)
@@ -285,64 +297,54 @@ func TestAdminClient_Keys(t *testing.T) {
 	}
 }
 
-func TestAdminClient_BearerToken(t *testing.T) {
+func TestAdminClient_AuthSigning(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name      string
-		token     string
-		wantAuth  bool
-		wantValue string
-	}{
-		{
-			name:      "token set includes Authorization Bearer header",
-			token:     "my-secret-token",
-			wantAuth:  true,
-			wantValue: "Bearer my-secret-token",
-		},
-		{
-			name:     "no token omits Authorization header",
-			token:    "",
-			wantAuth: false,
-		},
-	}
+	t.Run("signer present sends JWT", func(t *testing.T) {
+		t.Parallel()
+		var gotAuth string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotAuth = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}))
+		defer srv.Close()
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+		c, _ := New(Config{BaseURL: srv.URL, Signer: testSigner(t)})
+		_, err := c.GetTenant(context.Background(), "test-id")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.HasPrefix(gotAuth, "Bearer ") {
+			t.Fatalf("auth = %q, want Bearer <jwt>", gotAuth)
+		}
+		jwt := strings.TrimPrefix(gotAuth, "Bearer ")
+		if parts := strings.Split(jwt, "."); len(parts) != 3 {
+			t.Errorf("JWT should have 3 parts, got %d", len(parts))
+		}
+	})
 
-			var gotAuth string
-			var hasAuth bool
+	t.Run("nil signer omits header", func(t *testing.T) {
+		t.Parallel()
+		var hasAuth bool
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hasAuth = r.Header.Get("Authorization") != ""
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+		}))
+		defer srv.Close()
 
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				gotAuth = r.Header.Get("Authorization")
-				hasAuth = r.Header.Get("Authorization") != ""
-
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
-				_, _ = w.Write([]byte(`{"ok":true}`))
-			}))
-			defer srv.Close()
-
-			client, _ := New(Config{
-				BaseURL: srv.URL,
-				Token:   tt.token,
-			})
-
-			_, err := client.GetTenant(context.Background(), "test-id")
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if hasAuth != tt.wantAuth {
-				t.Errorf("Authorization header present = %v, want %v", hasAuth, tt.wantAuth)
-			}
-
-			if tt.wantAuth && gotAuth != tt.wantValue {
-				t.Errorf("Authorization = %q, want %q", gotAuth, tt.wantValue)
-			}
-		})
-	}
+		c, _ := New(Config{BaseURL: srv.URL})
+		_, err := c.GetTenant(context.Background(), "test-id")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if hasAuth {
+			t.Error("expected no Authorization header with nil signer")
+		}
+	})
 }
 
 func TestAdminClient_ErrorResponse(t *testing.T) {
@@ -381,7 +383,7 @@ func TestAdminClient_ErrorResponse(t *testing.T) {
 
 			client, _ := New(Config{
 				BaseURL: srv.URL,
-				Token:   "test-token",
+				Signer:  testSigner(t),
 			})
 
 			_, err := client.GetTenant(context.Background(), "any-id")
@@ -488,7 +490,7 @@ func TestAdminClient_GetEdition(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			c, _ := New(Config{BaseURL: srv.URL, Token: "test-token"})
+			c, _ := New(Config{BaseURL: srv.URL, Signer: testSigner(t)})
 
 			resp, err := c.GetEdition(context.Background())
 

@@ -30,14 +30,14 @@ var (
 type AdminClient struct {
 	baseURL    string
 	httpClient *http.Client
-	token      string
+	signer     AuthSigner
 }
 
 // Config holds AdminClient configuration.
 type Config struct {
 	BaseURL string
 	Timeout time.Duration
-	Token   string
+	Signer  AuthSigner
 }
 
 // New creates a new AdminClient.
@@ -54,7 +54,7 @@ func New(cfg Config) (*AdminClient, error) {
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
-		token: cfg.Token,
+		signer: cfg.Signer,
 	}, nil
 }
 
@@ -317,6 +317,28 @@ func (c *AdminClient) GetEdition(ctx context.Context) (*EditionResponse, error) 
 	return &edition, nil
 }
 
+// --- Admin Key Management ---
+
+// RegisterAdminKey registers a new admin public key.
+func (c *AdminClient) RegisterAdminKey(ctx context.Context, name, algorithm, publicKey string) (map[string]any, error) {
+	return c.doJSON(ctx, http.MethodPost, "/api/v1/admin/keys", map[string]string{
+		"name":       name,
+		"algorithm":  algorithm,
+		"public_key": publicKey,
+	})
+}
+
+// RevokeAdminKey revokes an admin key by ID.
+func (c *AdminClient) RevokeAdminKey(ctx context.Context, keyID string) error {
+	_, err := c.doJSON(ctx, http.MethodDelete, "/api/v1/admin/keys/"+keyID, nil)
+	return err
+}
+
+// ListAdminKeys lists active admin keys.
+func (c *AdminClient) ListAdminKeys(ctx context.Context) (map[string]any, error) {
+	return c.doJSON(ctx, http.MethodGet, "/api/v1/admin/keys", nil)
+}
+
 // --- Internal ---
 
 func (c *AdminClient) doJSON(ctx context.Context, method, path string, body any) (map[string]any, error) {
@@ -335,8 +357,8 @@ func (c *AdminClient) doJSON(ctx context.Context, method, path string, body any)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.signer != nil {
+		c.signer.SignRequest(req)
 	}
 
 	resp, err := c.httpClient.Do(req)
