@@ -45,112 +45,576 @@ sukko up
 sukko edition
 
 # Create a tenant
-sukko tenant create --name my-app
+sukko tenant create --id my-app --name "My App"
 
-# Generate an API key
-sukko key create --tenant <tenant-id>
+# Generate an ES256 key pair and register it
+sukko key create --tenant my-app --generate
+
+# Generate a JWT token (auto-discovers stored key)
+sukko token generate --tenant my-app --sub user1
 
 # Subscribe to a channel
-sukko subscribe --channel chat --key <api-key>
+sukko subscribe orders.new --token <jwt>
 
-# Publish a message
-sukko publish --channel chat --data '{"text": "hello"}' --key <api-key>
+# Publish a message (in another terminal)
+sukko publish orders.new '{"id": "123", "amount": 99.99}' --token <jwt>
 
 # Stop local stack
 sukko down
 ```
 
-### License Key Management
+## Authentication
+
+The CLI supports two authentication models:
+
+### Admin Authentication (Provisioning API)
+
+Ed25519 keypair-based JWT authentication for managing tenants, keys, rules, and quotas.
 
 ```bash
-# Store a license key (encrypted in context)
-sukko license set
+# Generate an Ed25519 admin keypair
+sukko auth keygen
 
-# View stored license info
-sukko license show
+# Register the public key with provisioning
+sukko auth register
 
-# Compare editions
-sukko edition compare
-
-# License key is automatically passed to services on sukko up
-sukko up
-```
-
-### Remote Contexts
-
-```bash
-# Create a context for a remote deployment (interactive, secrets masked)
-sukko context create
-
-# Switch between environments
-sukko context use staging
+# All admin commands now auto-sign requests with 5-minute JWTs
 sukko tenant list
 ```
 
-### Authentication
+Admin keys are stored per-context. For Kubernetes bootstrap, `sukko auth keygen` outputs the base64 public key for Helm values.
+
+### Gateway Authentication (WebSocket/SSE)
+
+Two methods for connecting to the gateway:
 
 ```bash
-# API key auth (primary method for subscribe/publish)
-sukko key create --tenant <tenant-id> --generate   # generates ES256 key pair
-sukko subscribe --channel chat                      # uses API key from context
+# API key auth (simpler, for public channels)
+sukko key create --tenant my-app --generate
+sukko subscribe chat --api-key <key>
 
-# JWT auth (full production auth path)
-sukko key create --generate --tenant local          # generate + register key pair
-sukko token generate --tenant local --sub user      # auto-discovers stored key
-sukko subscribe --channel chat --token <jwt>        # gateway validates JWT
+# JWT auth (full auth path with user identity, roles, groups)
+sukko key create --tenant my-app --generate        # generate + register ES256 key pair
+sukko token generate --tenant my-app --sub user1   # auto-discovers stored key
+sukko subscribe chat --token <jwt>
 ```
 
-### Testing
-
-The built-in tester service (included in Sukko deployments) runs smoke, load, stress, and validation tests. The CLI delegates test execution to the tester via its REST API.
+JWT tokens support claims for fine-grained access control:
 
 ```bash
-# Run tests (CLI passes deployment context to tester automatically)
-sukko test smoke
-sukko test load --connections 100 --duration 5m
-sukko test validate --suite auth
-sukko test validate --suite provisioning
+sukko token generate \
+  --tenant my-app \
+  --sub user1 \
+  --roles admin,moderator \
+  --groups vip,traders \
+  --scopes read:orders,write:orders \
+  --ttl 24h
+```
 
-# Test with a specific message backend
-sukko test load --message-backend=kafka --connections 50
+## Contexts
+
+Contexts store per-environment configuration (URLs, encrypted credentials, license keys). All secrets are encrypted at rest with XChaCha20-Poly1305.
+
+```bash
+# Create a local dev context (interactive setup)
+sukko init
+
+# Create a remote context (interactive, secrets masked)
+sukko context create staging
+
+# List all contexts
+sukko context list
+
+# Switch between environments
+sukko context use staging
+
+# Show active context details
+sukko context current
+
+# Remove a context
+sukko context remove old-env
+```
+
+Each context stores:
+- Gateway URL (WebSocket endpoint)
+- Provisioning URL (admin API)
+- Tester URL (optional)
+- Admin token or keypair (encrypted)
+- API key (encrypted)
+- License key (encrypted)
+- Environment name
+- Default tenant
+
+Non-interactive context creation via flags:
+
+```bash
+sukko context create production \
+  --provisioning-url https://api.sukko.example.com \
+  --gateway-url wss://ws.sukko.example.com \
+  --admin-token <token> \
+  --environment production \
+  --tenant acme
+```
+
+**Resolution order**: CLI flag > environment variable > context value > default.
+
+## Local Development
+
+### Initialization
+
+`sukko init` creates a `.sukko/config.json` with infrastructure selections and a `local` context with dev credentials.
+
+```bash
+# Interactive setup (prompts for each choice)
+sukko init
+
+# Skip prompts and use defaults (SQLite + NATS + direct)
+sukko init --defaults
+```
+
+Infrastructure choices:
+
+| Component | Options | Default |
+|-----------|---------|---------|
+| Database | `sqlite`, `postgres` | `sqlite` |
+| Broadcast bus | `nats`, `valkey` | `nats` |
+| Message backend | `direct`, `kafka`, `redpanda`, `nats` | `direct` |
+| Observability | `yes`, `no` | `no` |
+| Distributed tracing | `yes`, `no` | `yes` (if observability enabled) |
+| Continuous profiling | `yes`, `no` | `yes` (if observability enabled) |
+
+### Starting & Stopping
+
+```bash
+# Start all services (reads .sukko/config.json)
+sukko up
+
+# Pull latest images before starting
+sukko up --pull
+
+# Stop services
+sukko down
+
+# Stop and remove all volumes (full reset)
+sukko down -v
+```
+
+`sukko up` activates Docker Compose profiles based on your selections, waits for all services to become healthy, and provisions a default `local` tenant with routing and channel rules.
+
+### Services
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Provisioning | `http://localhost:8080` | Admin API |
+| Gateway | `ws://localhost:3000` | WebSocket + SSE + REST publish |
+| WS Server | `http://localhost:3005` | Message routing server |
+| Tester | `http://localhost:8090` | Test orchestration |
+| Grafana | `http://localhost:3030` | Dashboards (if observability enabled) |
+| Prometheus | `http://localhost:9091` | Metrics (if observability enabled) |
+| AlertManager | `http://localhost:9093` | Alerting (if observability enabled) |
+
+### Logs
+
+```bash
+# All services
+sukko logs -f
+
+# Specific services
+sukko logs ws-gateway ws-server -f
 ```
 
 ### Observability
 
+When enabled during `sukko init`, the stack includes Prometheus, Grafana, Tempo (distributed tracing), Pyroscope (continuous profiling), and AlertManager.
+
 ```bash
-# Enable observability during init (Prometheus, Grafana, Tempo, Pyroscope, AlertManager)
-sukko init
-
-# Start with observability profile activated
-sukko up
-
-# Open Grafana dashboard
+# Open Grafana in the browser
 sukko grafana
 ```
 
-## Commands
+## Tenant Management
+
+```bash
+# Create a tenant
+sukko tenant create --id acme --name "ACME Corp" --consumer-type shared
+
+# List tenants
+sukko tenant list
+sukko tenant list --limit 100 --offset 0 --status active
+
+# Get tenant details (uses active tenant from context if no ID given)
+sukko tenant get
+sukko tenant get acme
+
+# Update a tenant
+sukko tenant update acme --name "ACME Corporation"
+
+# Lifecycle management
+sukko tenant suspend acme
+sukko tenant reactivate acme
+sukko tenant deprovision acme    # initiates deletion with grace period
+```
+
+## JWT Signing Keys
+
+Manage per-tenant ES256/RS256/EdDSA signing keys for JWT authentication.
+
+```bash
+# Auto-generate an ES256 key pair (registers public key, saves private key locally)
+sukko key create --tenant acme --generate
+
+# Manual: register an existing public key
+sukko key create --tenant acme --algorithm ES256 --public-key-file key.pub
+
+# List keys
+sukko key list --tenant acme
+
+# Revoke a key
+sukko key revoke --tenant acme --key-id <key-id>
+```
+
+Generated private keys are stored in `~/.config/sukko/keys/<tenant-id>/<key-id>.pem`.
+
+## API Keys
+
+API keys provide simple authentication for gateway access (WebSocket, SSE, REST publish).
+
+```bash
+# Create an API key
+sukko api-keys create --tenant acme --name "web-app"
+
+# List API keys
+sukko api-keys list --tenant acme
+
+# Revoke an API key
+sukko api-keys revoke --tenant acme --key-id <key-id>
+```
+
+## Token Generation & Validation
+
+```bash
+# Generate a JWT (auto-discovers stored key for tenant)
+sukko token generate --tenant acme --sub user1
+
+# Generate with full claims
+sukko token generate \
+  --tenant acme \
+  --sub user1 \
+  --roles admin,moderator \
+  --groups vip \
+  --scopes read:orders,write:orders \
+  --ttl 24h
+
+# Generate with explicit key file and algorithm
+sukko token generate --tenant acme --sub user1 --algorithm ES256 --key-file private.pem
+
+# Decode and validate a token
+sukko token validate <token>
+
+# Validate with signature verification
+sukko token validate <token> --key-file public.pem
+```
+
+## Channel Rules
+
+### Routing Rules
+
+Control how messages are routed to Kafka/NATS topics.
+
+```bash
+# Get routing rules
+sukko rules routing get --tenant acme
+
+# Set from file
+sukko rules routing set --tenant acme --file routing.json
+
+# Delete routing rules
+sukko rules routing delete --tenant acme
+```
+
+Example `routing.json`:
+
+```json
+{
+  "rules": [
+    {"pattern": "*.*", "topic_suffix": "default"},
+    {"pattern": "orders.*", "topic_suffix": "orders"}
+  ]
+}
+```
+
+### Channel Permission Rules
+
+Control which channels are accessible (public, private, user-scoped, group-scoped).
+
+```bash
+# Set public channel patterns
+sukko rules channels set --tenant acme --public "*" --public "chat.*"
+
+# Set from file (for complex rules)
+sukko rules channels set --tenant acme --file channels.json
+
+# Get channel rules
+sukko rules channels get --tenant acme
+
+# Delete channel rules
+sukko rules channels delete --tenant acme
+
+# Test access for a subject
+sukko rules test-access --tenant acme --sub user1 --channel orders.new --group vip
+```
+
+## Quotas
+
+```bash
+# Get quotas
+sukko quota get --tenant acme
+
+# Update quotas
+sukko quota update --tenant acme \
+  --max-connections 1000 \
+  --max-topics 50 \
+  --max-partitions 100 \
+  --max-storage-bytes 10737418240 \
+  --producer-byte-rate 1048576 \
+  --consumer-byte-rate 2097152
+```
+
+## WebSocket Operations
+
+### Subscribe
+
+```bash
+# Subscribe to one or more channels
+sukko subscribe orders.new customer.updates --token <jwt>
+
+# Subscribe with API key
+sukko subscribe chat --api-key <key>
+
+# Subscribe using context credentials
+sukko subscribe orders.*
+```
+
+Messages stream to stdout. Press Ctrl+C to disconnect — a summary of total messages, duration, and channels is printed on exit.
+
+### Publish
+
+```bash
+# Publish a single message (must be valid JSON)
+sukko publish orders.new '{"id": "123", "amount": 99.99}' --token <jwt>
+
+# Publish multiple messages with interval
+sukko publish metrics '{"value": 42}' --count 10 --interval 1s
+
+# Publish with API key
+sukko publish chat '{"text": "hello"}' --api-key <key>
+```
+
+### Connection Test
+
+Quick WebSocket connectivity check without the tester service:
+
+```bash
+sukko connections test
+sukko connections test --gateway-url ws://staging.example.com --token <jwt> --timeout 5s
+```
+
+Tests WebSocket upgrade (101), subscribe, and subscription acknowledgment. Reports pass/fail with latency.
+
+## Testing
+
+The built-in tester service (included in Sukko deployments) runs smoke, load, stress, soak, and validation tests. The CLI delegates test execution to the tester via its REST API and streams results via SSE.
+
+### Test Types
+
+```bash
+# Quick connectivity and health check
+sukko test smoke -f
+
+# Sustained load test
+sukko test load --connections 100 --duration 5m --publish-rate 10 -f
+
+# Push to maximum capacity
+sukko test stress --connections 1000 --ramp-rate 100 --duration 2m -f
+
+# Long-running stability test
+sukko test soak --connections 50 --duration 2h -f
+
+# Run a validation suite
+sukko test validate --suite auth -f
+```
+
+### Validation Suites
+
+Suites are dynamically fetched from the tester. Tab completion works when the tester is running.
+
+| Suite | Description |
+|-------|-------------|
+| `auth` | JWT authentication validation (valid, expired, wrong kid, wrong tenant, revoked, missing) |
+| `channels` | Channel subscribe/unsubscribe operations |
+| `ordering` | Message FIFO ordering verification |
+| `reconnect` | Disconnect/reconnect session recovery |
+| `ratelimit` | Rate limit enforcement detection |
+| `edition-limits` | Edition boundary limit testing |
+| `pubsub` | Pub-sub delivery with channel scoping (public, user, group) |
+| `tenant-isolation` | Cross-tenant message isolation |
+| `provisioning` | Provisioning API validation |
+
+```bash
+# Run with a specific message backend
+sukko test load --message-backend kafka --connections 50 -f
+
+# Override tester URL
+sukko test smoke --tester-url http://tester.staging:8090 -f
+```
+
+### Context Passthrough
+
+For remote contexts, the CLI automatically passes gateway URL, provisioning URL, admin credentials, and environment to the tester. For local contexts (localhost), the tester uses Docker-internal URLs.
+
+## Edition & Licensing
+
+### Edition Info
+
+```bash
+# Show current edition, limits, and live resource usage
+sukko edition
+
+# Compare all editions side-by-side
+sukko edition compare
+```
+
+`sukko edition` fetches live data from provisioning and gateway, showing current usage against limits with color-coded percentages (green < 75%, yellow 75-90%, red > 90%). Falls back to the locally stored license key if the platform is unreachable.
+
+### Edition Comparison
+
+| Dimension | Community | Pro | Enterprise |
+|-----------|-----------|-----|------------|
+| Tenants | 3 | 50 | Unlimited |
+| Total Connections | 500 | 10,000 | Unlimited |
+| Shards | 1 | 8 | Unlimited |
+| Topics/Tenant | 10 | 50 | Unlimited |
+| Routing Rules/Tenant | 10 | 100 | Unlimited |
+| Message Backend | direct | +kafka/nats | All |
+| Database | sqlite | +postgres | All |
+| Per-Tenant Isolation | - | Yes | Yes |
+| Alerting | - | Yes | Yes |
+| SSE Transport | - | Yes | Yes |
+| Web Push | - | - | Yes |
+| Audit Logging | - | - | Yes |
+| Admin UI SSO | - | - | Yes |
+
+### License Management
+
+```bash
+# Store a license key (prompts for input to avoid shell history)
+sukko license set
+
+# Store via argument
+sukko license set <key>
+
+# View stored license info (key masked)
+sukko license show
+
+# Remove stored license
+sukko license remove
+```
+
+License keys are encrypted at rest. The key is automatically passed to services on `sukko up`.
+
+## Health & Status
+
+```bash
+# Check health of all components with troubleshooting tips
+sukko health
+
+# Show unified service status
+sukko status
+```
+
+`sukko health` probes provisioning, gateway, server, and tester health endpoints, reporting per-component status with troubleshooting suggestions on failure.
+
+`sukko status` uses Docker Compose for local environments and HTTP health checks for remote.
+
+## Configuration
+
+### Global Flags
+
+| Flag | Environment Variable | Default | Description |
+|------|---------------------|---------|-------------|
+| `--api-url` | `SUKKO_API_URL` | `http://localhost:8080` | Provisioning API URL |
+| `--token` | `SUKKO_TOKEN` | — | Admin auth token |
+| `--context` | `SUKKO_CONTEXT` | — | Active context name |
+| `-o, --output` | — | `table` | Output format (`table` or `json`) |
+| `--verbose` | — | `false` | Enable verbose output |
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SUKKO_API_URL` | `http://localhost:8080` | Provisioning API URL |
+| `SUKKO_GATEWAY_URL` | `ws://localhost:3000` | WebSocket gateway URL |
+| `SUKKO_GATEWAY_HTTP_URL` | `http://localhost:3000` | Gateway HTTP endpoint |
+| `SUKKO_SERVER_URL` | `http://localhost:3005` | WebSocket server URL |
+| `SUKKO_TESTER_URL` | `http://localhost:8090` | Tester service URL |
+| `SUKKO_TOKEN` | — | Admin auth token |
+| `SUKKO_TESTER_TOKEN` | — | Tester API auth token |
+| `SUKKO_LICENSE_KEY` | — | License key passthrough |
+| `SUKKO_CONTEXT` | — | Active context name |
+
+### View Active Configuration
+
+```bash
+# Show all env var defaults (table, env, or json format)
+sukko config defaults
+sukko config defaults --format env
+sukko config defaults --format json
+
+# Fetch live configuration from provisioning
+sukko config view
+```
+
+## Shell Completion
+
+```bash
+# Bash
+source <(sukko completion bash)
+echo 'source <(sukko completion bash)' >> ~/.bashrc
+
+# Zsh
+source <(sukko completion zsh)
+echo 'source <(sukko completion zsh)' >> ~/.zshrc
+
+# Fish
+sukko completion fish | source
+sukko completion fish > ~/.config/fish/completions/sukko.fish
+```
+
+## Command Reference
 
 ### Works everywhere (local + remote)
 
 | Command | Description |
 |---------|-------------|
-| `sukko tenant` | Manage tenants |
-| `sukko key` | Manage signing keys (`--generate` for ES256 key pair) |
+| `sukko auth` | Manage admin Ed25519 keypairs (keygen, register, revoke, list) |
+| `sukko tenant` | Manage tenants (create, get, list, update, suspend, reactivate, deprovision) |
+| `sukko key` | Manage JWT signing keys (`--generate` for ES256 key pair) |
+| `sukko api-keys` | Manage API keys for gateway access |
 | `sukko token` | Generate and validate JWT tokens |
-| `sukko subscribe` | Subscribe to WebSocket channels |
+| `sukko subscribe` | Subscribe to WebSocket channels and stream messages |
 | `sukko publish` | Publish messages to channels |
-| `sukko connections` | List active connections |
-| `sukko rules` | Manage channel rules |
-| `sukko quota` | Manage quotas |
+| `sukko connections test` | Quick WebSocket connectivity check |
+| `sukko rules` | Manage routing and channel permission rules |
+| `sukko quota` | Manage tenant quotas |
 | `sukko edition` | Show current edition, limits, and resource usage |
 | `sukko edition compare` | Compare Community, Pro, and Enterprise editions |
 | `sukko license` | Store, view, and remove license keys |
-| `sukko health` | Check service health |
+| `sukko health` | Check service health with troubleshooting tips |
 | `sukko status` | Show platform status |
-| `sukko test` | Run smoke, load, stress, and validation tests |
+| `sukko test` | Run smoke, load, stress, soak, and validation tests |
 | `sukko context` | Create, switch, list, or delete contexts |
 | `sukko config` | View/set config defaults |
-| `sukko completion` | Generate shell completions |
+| `sukko completion` | Generate shell completions (bash, zsh, fish) |
 | `sukko version` | Print version info |
 
 ### Local development only (Docker Compose)
@@ -160,33 +624,9 @@ sukko grafana
 | `sukko init` | Set up local context + infrastructure selections |
 | `sukko up` | Start local dev environment (activates selected profiles) |
 | `sukko up --pull` | Pull latest images before starting |
-| `sukko down` | Stop local dev environment |
-| `sukko logs` | View Docker Compose service logs |
-| `sukko grafana` | Open Grafana dashboard in browser (requires observability) |
-
-## Configuration
-
-Flags can be set via environment variables:
-
-| Flag | Environment Variable | Default |
-|------|---------------------|---------|
-| `--api-url` | `SUKKO_API_URL` | `http://localhost:8080` |
-| `--token` | `SUKKO_TOKEN` | — |
-| `--context` | `SUKKO_CONTEXT` | — |
-
-Resolution order: **flags > context > environment variables > defaults**.
-
-### Contexts
-
-Contexts store per-environment configuration (URLs, encrypted credentials, license keys).
-
-```bash
-sukko init                    # creates "local" context with dev defaults
-sukko context create          # create a remote context (interactive, secrets masked)
-sukko context list            # list all contexts
-sukko context use staging     # switch to staging
-sukko context current         # show active context details
-```
+| `sukko down` | Stop local dev environment (`-v` to remove volumes) |
+| `sukko logs` | View Docker Compose service logs (`-f` to follow) |
+| `sukko grafana` | Open Grafana dashboard in browser |
 
 ## License
 
