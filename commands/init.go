@@ -155,7 +155,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		TesterURL:       defaultTesterURL,
 		AdminTokenEnc:   tokenEnc,
 		Environment:     "local",
-		ActiveTenant:    "local",
+		ActiveTenant:    "demo",
 	}
 
 	if err := store.Add(ctx); err != nil {
