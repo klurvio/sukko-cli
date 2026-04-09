@@ -207,18 +207,18 @@ func provisionDefaultTenant(cmd *cobra.Command) error {
 
 	// Create default tenant (ignore conflict — may already exist)
 	_, err = c.CreateTenant(ctx, map[string]any{
-		"id":            "local",
-		"name":          "Local Development",
+		"id":            "demo",
+		"name":          "Demo",
 		"consumer_type": "shared",
 	})
 	if err != nil {
-		fmt.Fprintf(cmd.OutOrStdout(), "  Tenant 'local': %v (may already exist)\n", err)
+		fmt.Fprintf(cmd.OutOrStdout(), "  Tenant 'demo': %v (may already exist)\n", err)
 	} else {
-		fmt.Fprintln(cmd.OutOrStdout(), "  Tenant 'local': created")
+		fmt.Fprintln(cmd.OutOrStdout(), "  Tenant 'demo': created")
 	}
 
 	// Set catch-all routing rules
-	_, err = c.SetRoutingRules(ctx, "local", map[string]any{
+	_, err = c.SetRoutingRules(ctx, "demo", map[string]any{
 		"rules": []map[string]any{
 			{"pattern": "*.*", "topic_suffix": "default"},
 		},
@@ -230,7 +230,7 @@ func provisionDefaultTenant(cmd *cobra.Command) error {
 	}
 
 	// Set all-public channel rules
-	_, err = c.SetChannelRules(ctx, "local", map[string]any{
+	_, err = c.SetChannelRules(ctx, "demo", map[string]any{
 		"public_patterns": []string{"*"},
 	})
 	if err != nil {

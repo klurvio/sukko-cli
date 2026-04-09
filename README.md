@@ -199,7 +199,7 @@ sukko down
 sukko down -v
 ```
 
-`sukko up` activates Docker Compose profiles based on your selections, waits for all services to become healthy, and provisions a default `local` tenant with routing and channel rules.
+`sukko up` activates Docker Compose profiles based on your selections, waits for all services to become healthy, and provisions a default `demo` tenant with routing and channel rules.
 
 ### Services
 
