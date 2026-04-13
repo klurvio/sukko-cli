@@ -313,6 +313,18 @@ sukko token validate <token>
 
 # Validate with signature verification
 sukko token validate <token> --key-file public.pem
+
+# Revoke a specific session by jti
+sukko token revoke --jti <session-id> --tenant acme
+
+# Revoke all sessions for a user
+sukko token revoke --sub user@example.com --tenant acme
+
+# Revoke by passing the JWT directly (extracts jti and tenant automatically)
+sukko token revoke --token <jwt>
+
+# Revoke with custom expiry (duration or RFC3339)
+sukko token revoke --jti <id> --tenant acme --expires 2h
 ```
 
 ## Channel Rules
@@ -600,7 +612,7 @@ sukko completion fish > ~/.config/fish/completions/sukko.fish
 | `sukko tenant` | Manage tenants (create, get, list, update, suspend, reactivate, deprovision) |
 | `sukko key` | Manage JWT signing keys (`--generate` for ES256 key pair) |
 | `sukko api-keys` | Manage API keys for gateway access |
-| `sukko token` | Generate and validate JWT tokens |
+| `sukko token` | Generate, validate, and revoke JWT tokens |
 | `sukko subscribe` | Subscribe to WebSocket channels and stream messages |
 | `sukko publish` | Publish messages to channels |
 | `sukko connections test` | Quick WebSocket connectivity check |

@@ -179,6 +179,16 @@ func (c *AdminClient) RevokeAPIKey(ctx context.Context, tenantID, keyID string) 
 	return c.doJSON(ctx, "DELETE", tenantPath(tenantID, "api-keys", url.PathEscape(keyID)), nil)
 }
 
+// --- Token Revocation ---
+
+// RevokeToken revokes a token by jti or sub for a tenant.
+func (c *AdminClient) RevokeToken(ctx context.Context, tenantID string, req map[string]any) (map[string]any, error) {
+	if err := requireTenantID(tenantID); err != nil {
+		return nil, err
+	}
+	return c.doJSON(ctx, "POST", tenantPath(tenantID, "tokens", "revoke"), req)
+}
+
 // --- Routing Rules ---
 
 // GetRoutingRules retrieves routing rules for a tenant.

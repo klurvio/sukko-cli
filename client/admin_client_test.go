@@ -569,3 +569,61 @@ func TestAdminClient_DefaultTimeout(t *testing.T) {
 		})
 	}
 }
+
+func TestAdminClient_RevokeToken(t *testing.T) {
+	t.Parallel()
+
+	var gotMethod, gotPath string
+	var gotBody map[string]any
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status":     "revoked",
+			"type":       "token",
+			"tenant_id":  "acme",
+			"expires_at": "2026-04-15T00:00:00Z",
+		})
+	}))
+	defer srv.Close()
+
+	c, err := New(Config{BaseURL: srv.URL, Signer: testSigner(t)})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	result, err := c.RevokeToken(context.Background(), "acme", map[string]any{"jti": "abc-123"})
+	if err != nil {
+		t.Fatalf("RevokeToken: %v", err)
+	}
+
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %q, want POST", gotMethod)
+	}
+	if gotPath != "/api/v1/tenants/acme/tokens/revoke" {
+		t.Errorf("path = %q, want /api/v1/tenants/acme/tokens/revoke", gotPath)
+	}
+	if gotBody["jti"] != "abc-123" {
+		t.Errorf("body jti = %v, want abc-123", gotBody["jti"])
+	}
+	if result["status"] != "revoked" {
+		t.Errorf("result status = %v, want revoked", result["status"])
+	}
+}
+
+func TestAdminClient_RevokeToken_EmptyTenant(t *testing.T) {
+	t.Parallel()
+
+	c, err := New(Config{BaseURL: "http://localhost", Signer: testSigner(t)})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	_, err = c.RevokeToken(context.Background(), "", map[string]any{"jti": "abc"})
+	if err == nil {
+		t.Error("expected error for empty tenantID")
+	}
+}

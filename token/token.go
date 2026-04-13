@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 const defaultTTL = time.Hour
@@ -40,19 +41,23 @@ type DecodedToken struct {
 }
 
 // Generate creates a signed JWT token using an asymmetric private key.
-func Generate(cfg GenerateConfig) (string, error) {
+// Returns the signed token string and the generated jti (JWT ID) for reference.
+func Generate(cfg GenerateConfig) (tokenStr, jti string, err error) {
 	if cfg.Algorithm == "" {
-		return "", errors.New("algorithm is required (ES256, RS256, EdDSA)")
+		return "", "", errors.New("algorithm is required (ES256, RS256, EdDSA)")
 	}
 	if cfg.KeyFile == "" {
-		return "", errors.New("key file is required")
+		return "", "", errors.New("key file is required")
 	}
 	if cfg.TTL == 0 {
 		cfg.TTL = defaultTTL
 	}
 
+	jti = uuid.New().String()
+
 	now := time.Now()
 	claims := jwt.MapClaims{
+		"jti": jti,
 		"iat": now.Unix(),
 		"exp": now.Add(cfg.TTL).Unix(),
 	}
@@ -75,22 +80,22 @@ func Generate(cfg GenerateConfig) (string, error) {
 
 	method, err := signingMethod(cfg.Algorithm)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	token := jwt.NewWithClaims(method, claims)
 
 	key, err := loadPrivateKey(cfg.KeyFile)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	signed, err := token.SignedString(key)
 	if err != nil {
-		return "", fmt.Errorf("sign token: %w", err)
+		return "", "", fmt.Errorf("sign token: %w", err)
 	}
 
-	return signed, nil
+	return signed, jti, nil
 }
 
 // Decode decodes a JWT without verifying the signature.
