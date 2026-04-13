@@ -85,7 +85,7 @@ func TestGenerateES256(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			tokenStr, err := Generate(tt.cfg)
+			tokenStr, _, err := Generate(tt.cfg)
 			if err != nil {
 				t.Fatalf("Generate: %v", err)
 			}
@@ -119,7 +119,7 @@ func TestValidateWithKeyFile(t *testing.T) {
 
 	privPath, pubPath := writeTestKeyPair(t)
 
-	tokenStr, err := Generate(GenerateConfig{
+	tokenStr, _, err := Generate(GenerateConfig{
 		Subject:   "user",
 		TenantID:  "acme",
 		Algorithm: "ES256",
@@ -145,7 +145,7 @@ func TestValidateWithKeyFile_Tampered(t *testing.T) {
 
 	privPath, pubPath := writeTestKeyPair(t)
 
-	tokenStr, err := Generate(GenerateConfig{
+	tokenStr, _, err := Generate(GenerateConfig{
 		Subject:   "user",
 		Algorithm: "ES256",
 		KeyFile:   privPath,
@@ -173,7 +173,7 @@ func TestDecodeExpiredToken(t *testing.T) {
 
 	privPath, _ := writeTestKeyPair(t)
 
-	tokenStr, err := Generate(GenerateConfig{
+	tokenStr, _, err := Generate(GenerateConfig{
 		Subject:   "user",
 		Algorithm: "ES256",
 		KeyFile:   privPath,
@@ -199,7 +199,7 @@ func TestDecodeExpiredToken(t *testing.T) {
 func TestGenerateNoAlgorithm(t *testing.T) {
 	t.Parallel()
 
-	_, err := Generate(GenerateConfig{
+	_, _, err := Generate(GenerateConfig{
 		Subject: "user",
 	})
 	if err == nil {
@@ -210,7 +210,7 @@ func TestGenerateNoAlgorithm(t *testing.T) {
 func TestGenerateNoKeyFile(t *testing.T) {
 	t.Parallel()
 
-	_, err := Generate(GenerateConfig{
+	_, _, err := Generate(GenerateConfig{
 		Subject:   "user",
 		Algorithm: "ES256",
 	})
@@ -224,12 +224,68 @@ func TestGenerateUnsupportedAlgorithm(t *testing.T) {
 
 	privPath, _ := writeTestKeyPair(t)
 
-	_, err := Generate(GenerateConfig{
+	_, _, err := Generate(GenerateConfig{
 		Subject:   "user",
 		Algorithm: "HS256",
 		KeyFile:   privPath,
 	})
 	if err == nil {
 		t.Error("expected error for HS256 (removed)")
+	}
+}
+
+func TestGenerate_IncludesJTI(t *testing.T) {
+	t.Parallel()
+
+	privPath, _ := writeTestKeyPair(t)
+
+	tokenStr, jti, err := Generate(GenerateConfig{
+		Subject:   "user",
+		TenantID:  "acme",
+		Algorithm: "ES256",
+		KeyFile:   privPath,
+		TTL:       time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	if jti == "" {
+		t.Fatal("expected non-empty jti")
+	}
+
+	decoded, err := Decode(tokenStr)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+
+	claimJTI, _ := decoded.Claims["jti"].(string)
+	if claimJTI == "" {
+		t.Fatal("expected jti claim in token")
+	}
+}
+
+func TestGenerate_ReturnsJTI(t *testing.T) {
+	t.Parallel()
+
+	privPath, _ := writeTestKeyPair(t)
+
+	tokenStr, jti, err := Generate(GenerateConfig{
+		Subject:   "user",
+		Algorithm: "ES256",
+		KeyFile:   privPath,
+	})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	decoded, err := Decode(tokenStr)
+	if err != nil {
+		t.Fatalf("Decode: %v", err)
+	}
+
+	claimJTI, _ := decoded.Claims["jti"].(string)
+	if claimJTI != jti {
+		t.Errorf("returned jti %q does not match claim jti %q", jti, claimJTI)
 	}
 }
