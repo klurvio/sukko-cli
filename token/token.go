@@ -42,7 +42,7 @@ type DecodedToken struct {
 
 // Generate creates a signed JWT token using an asymmetric private key.
 // Returns the signed token string and the generated jti (JWT ID) for reference.
-func Generate(cfg GenerateConfig) (tokenStr string, jti string, err error) {
+func Generate(cfg GenerateConfig) (tokenStr, jti string, err error) {
 	if cfg.Algorithm == "" {
 		return "", "", errors.New("algorithm is required (ES256, RS256, EdDSA)")
 	}
