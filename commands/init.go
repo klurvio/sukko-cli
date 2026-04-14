@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -36,15 +38,19 @@ func init() {
 }
 
 // ProjectConfig stores infrastructure selections from sukko init.
-// Secrets (admin token) are NOT stored here — they live
-// exclusively in the encrypted context store (~/.config/sukko/contexts/).
+// Secrets (admin token) are NOT stored here — they live exclusively in the
+// encrypted context store (~/.config/sukko/contexts/).
+// Exception: CredentialsEncKey is stored here because it's a local dev-only
+// key passed to the provisioning container via env var. The .sukko/ directory
+// is gitignored and local to the project.
 type ProjectConfig struct {
-	Database       string `json:"database"`
-	Broadcast      string `json:"broadcast"`
-	MessageBackend string `json:"message_backend"`
-	Observability  bool   `json:"observability,omitempty"`
-	Tracing        bool   `json:"tracing,omitempty"`
-	Profiling      bool   `json:"profiling,omitempty"`
+	Database              string `json:"database"`
+	Broadcast             string `json:"broadcast"`
+	MessageBackend        string `json:"message_backend"`
+	Observability         bool   `json:"observability,omitempty"`
+	Tracing               bool   `json:"tracing,omitempty"`
+	Profiling             bool   `json:"profiling,omitempty"`
+	CredentialsEncKey     string `json:"credentials_encryption_key,omitempty"` // auto-generated 32-byte hex key for provisioning
 }
 
 // loadProjectConfig reads and unmarshals .sukko/config.json.
@@ -77,10 +83,17 @@ a local context with dev credentials. Run 'sukko up' to start services.`,
 }
 
 func runInit(cmd *cobra.Command, _ []string) error {
+	// Generate 32-byte credentials encryption key for provisioning
+	keyBytes := make([]byte, 32)
+	if _, err := rand.Read(keyBytes); err != nil {
+		return fmt.Errorf("generate credentials encryption key: %w", err)
+	}
+
 	cfg := ProjectConfig{
-		Database:       "postgres",
-		Broadcast:      "nats",
-		MessageBackend: "direct",
+		Database:          "postgres",
+		Broadcast:         "nats",
+		MessageBackend:    "direct",
+		CredentialsEncKey: hex.EncodeToString(keyBytes),
 	}
 
 	if !useDefaults {

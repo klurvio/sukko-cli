@@ -67,6 +67,11 @@ func runUp(cmd *cobra.Command, _ []string) error {
 	// Build profiles and env overrides from selections
 	profiles, envOverrides := buildComposeConfig(cfg)
 
+	// Credentials encryption key (required by provisioning for encrypting secrets in DB)
+	if cfg.CredentialsEncKey != "" {
+		envOverrides["CREDENTIALS_ENCRYPTION_KEY"] = cfg.CredentialsEncKey
+	}
+
 	// best-effort: license key passthrough is optional; decrypt failure is non-fatal
 	if resolvedCtx != nil && resolvedStore != nil {
 		if lk, err := resolvedCtx.LicenseKey(resolvedStore.Key()); err == nil && lk != "" {
@@ -74,8 +79,8 @@ func runUp(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	fmt.Fprintf(cmd.OutOrStdout(), "Starting Sukko (%s + %s + %s)...\n",
-		cfg.Database, cfg.Broadcast, cfg.MessageBackend)
+	fmt.Fprintf(cmd.OutOrStdout(), "Starting Sukko (postgres + %s + %s)...\n",
+		cfg.Broadcast, cfg.MessageBackend)
 
 	// Write embedded compose file to .sukko/
 	if err := compose.WriteComposeFile(composeFilePath()); err != nil {
@@ -83,6 +88,7 @@ func runUp(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Start Docker Compose
+	fmt.Fprintln(cmd.OutOrStdout(), "\nStarting containers...")
 	mgr, err := compose.NewManager(".", composeFilePath())
 	if err != nil {
 		return fmt.Errorf("create compose manager: %w", err)
@@ -92,7 +98,7 @@ func runUp(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Wait for health — resolve URLs from context.
-	fmt.Fprintln(cmd.OutOrStdout(), "\nWaiting for services to become healthy...")
+	fmt.Fprintln(cmd.OutOrStdout(), "\nWaiting for services...")
 
 	provURL := defaultAPIURL
 	gwHTTP := defaultGatewayHTTP

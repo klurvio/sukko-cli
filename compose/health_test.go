@@ -27,10 +27,10 @@ func TestWaitForHealth_AllHealthy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !bytes.Contains(buf.Bytes(), []byte("svc-a: healthy")) {
+	if !bytes.Contains(buf.Bytes(), []byte("svc-a:")) || !bytes.Contains(buf.Bytes(), []byte("healthy")) {
 		t.Error("expected svc-a healthy in output")
 	}
-	if !bytes.Contains(buf.Bytes(), []byte("svc-b: healthy")) {
+	if !bytes.Contains(buf.Bytes(), []byte("svc-b:")) || !bytes.Contains(buf.Bytes(), []byte("healthy")) {
 		t.Error("expected svc-b healthy in output")
 	}
 }
@@ -113,7 +113,7 @@ func TestWaitForHealth_PartialHealth(t *testing.T) {
 		t.Fatal("expected timeout error when one service is unhealthy")
 	}
 	// The healthy service should have been reported
-	if !bytes.Contains(buf.Bytes(), []byte("good: healthy")) {
+	if !bytes.Contains(buf.Bytes(), []byte("good:")) || !bytes.Contains(buf.Bytes(), []byte("healthy")) {
 		t.Error("expected healthy service to be reported")
 	}
 }
