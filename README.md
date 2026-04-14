@@ -176,7 +176,6 @@ Infrastructure choices:
 
 | Component | Options | Default |
 |-----------|---------|---------|
-| Database | `sqlite`, `postgres` | `sqlite` |
 | Broadcast bus | `nats`, `valkey` | `nats` |
 | Message backend | `direct`, `kafka`, `redpanda`, `nats` | `direct` |
 | Observability | `yes`, `no` | `no` |
@@ -508,7 +507,6 @@ sukko edition compare
 | Topics/Tenant | 10 | 50 | Unlimited |
 | Routing Rules/Tenant | 10 | 100 | Unlimited |
 | Message Backend | direct | +kafka/nats | All |
-| Database | sqlite | +postgres | All |
 | Per-Tenant Isolation | - | Yes | Yes |
 | Alerting | - | Yes | Yes |
 | SSE Transport | - | Yes | Yes |

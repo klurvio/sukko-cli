@@ -31,7 +31,7 @@ var devAdminToken = envOrDefault("SUKKO_DEV_ADMIN_TOKEN", "sukko-dev-token")
 var useDefaults bool
 
 func init() {
-	initCmd.Flags().BoolVar(&useDefaults, "defaults", false, "Skip prompts and use defaults (SQLite + NATS + direct)")
+	initCmd.Flags().BoolVar(&useDefaults, "defaults", false, "Skip prompts and use defaults (postgres + NATS + direct)")
 	rootCmd.AddCommand(initCmd)
 }
 
@@ -78,17 +78,13 @@ a local context with dev credentials. Run 'sukko up' to start services.`,
 
 func runInit(cmd *cobra.Command, _ []string) error {
 	cfg := ProjectConfig{
-		Database:       "sqlite",
+		Database:       "postgres",
 		Broadcast:      "nats",
 		MessageBackend: "direct",
 	}
 
 	if !useDefaults {
 		var err error
-		cfg.Database, err = promptChoice(cmd, "Database", []string{"sqlite", "postgres"}, "sqlite")
-		if err != nil {
-			return err
-		}
 		cfg.Broadcast, err = promptChoice(cmd, "Broadcast bus", []string{"nats", "valkey"}, "nats")
 		if err != nil {
 			return err
