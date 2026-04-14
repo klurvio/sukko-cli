@@ -44,13 +44,13 @@ func init() {
 // key passed to the provisioning container via env var. The .sukko/ directory
 // is gitignored and local to the project.
 type ProjectConfig struct {
-	Database              string `json:"database"`
-	Broadcast             string `json:"broadcast"`
-	MessageBackend        string `json:"message_backend"`
-	Observability         bool   `json:"observability,omitempty"`
-	Tracing               bool   `json:"tracing,omitempty"`
-	Profiling             bool   `json:"profiling,omitempty"`
-	CredentialsEncKey     string `json:"credentials_encryption_key,omitempty"` // auto-generated 32-byte hex key for provisioning
+	Database          string `json:"database"`
+	Broadcast         string `json:"broadcast"`
+	MessageBackend    string `json:"message_backend"`
+	Observability     bool   `json:"observability,omitempty"`
+	Tracing           bool   `json:"tracing,omitempty"`
+	Profiling         bool   `json:"profiling,omitempty"`
+	CredentialsEncKey string `json:"credentials_encryption_key,omitempty"` // auto-generated 32-byte hex key for provisioning
 }
 
 // loadProjectConfig reads and unmarshals .sukko/config.json.
