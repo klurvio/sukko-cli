@@ -157,11 +157,10 @@ func runUp(cmd *cobra.Command, _ []string) error {
 func buildComposeConfig(cfg ProjectConfig) (profiles []string, envOverrides map[string]string) {
 	envOverrides = map[string]string{}
 
-	if cfg.Database == "postgres" {
-		profiles = append(profiles, "postgres")
-		envOverrides["DATABASE_DRIVER"] = "postgres"
-		envOverrides["DATABASE_URL"] = composeDatabaseURL
-	}
+	// Postgres is the only supported database — always activate
+	profiles = append(profiles, "postgres")
+	envOverrides["DATABASE_DRIVER"] = "postgres"
+	envOverrides["DATABASE_URL"] = composeDatabaseURL
 
 	if cfg.Broadcast == "valkey" {
 		profiles = append(profiles, "valkey")
