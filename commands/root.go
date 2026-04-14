@@ -19,9 +19,9 @@ import (
 
 // CLI default values. Env vars take precedence via envOrDefault; CLI flags take precedence over env.
 var (
-	defaultAPIURL      = envOrDefault("SUKKO_API_URL", "http://localhost:8080")
-	defaultGatewayURL  = envOrDefault("SUKKO_GATEWAY_URL", "ws://localhost:3000")
-	defaultGatewayHTTP = envOrDefault("SUKKO_GATEWAY_HTTP_URL", "http://localhost:3000")
+	defaultAPIURL      = envOrDefault("SUKKO_API_URL", "http://localhost:18080")
+	defaultGatewayURL  = envOrDefault("SUKKO_GATEWAY_URL", "ws://localhost:13000")
+	defaultGatewayHTTP = envOrDefault("SUKKO_GATEWAY_HTTP_URL", "http://localhost:13000")
 	defaultServerURL   = envOrDefault("SUKKO_SERVER_URL", "http://localhost:3005")
 	defaultTesterURL   = envOrDefault("SUKKO_TESTER_URL", "http://localhost:8090")
 )

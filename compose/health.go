@@ -33,9 +33,10 @@ func WaitForHealth(ctx context.Context, w io.Writer, targets []HealthTarget, tim
 	client := &http.Client{Timeout: healthClientTimeout}
 
 	type serviceState struct {
-		target  HealthTarget
-		healthy bool
-		elapsed time.Duration
+		target   HealthTarget
+		healthy  bool
+		reported bool
+		elapsed  time.Duration
 	}
 
 	states := make([]serviceState, len(targets))
@@ -85,20 +86,25 @@ func WaitForHealth(ctx context.Context, w io.Writer, targets []HealthTarget, tim
 			}
 			wg.Wait()
 
-			// Print status for all services
+			// Print only newly healthy services and a single waiting summary
 			allHealthy := true
-			for _, s := range states {
-				if s.healthy {
-					_, _ = fmt.Fprintf(w, "  %-16s healthy (%s)\n", s.target.Name+":", s.elapsed.Round(time.Second))
-				} else {
-					_, _ = fmt.Fprintf(w, "  %-16s waiting... (%s)\n", s.target.Name+":", time.Since(start).Round(time.Second))
+			var waiting []string
+			for i := range states {
+				if states[i].healthy && !states[i].reported {
+					_, _ = fmt.Fprintf(w, "  %-16s healthy (%s)\n", states[i].target.Name+":", states[i].elapsed.Round(time.Second))
+					states[i].reported = true
+				}
+				if !states[i].healthy {
 					allHealthy = false
+					waiting = append(waiting, states[i].target.Name)
 				}
 			}
 
 			if allHealthy {
 				return nil
 			}
+
+			_, _ = fmt.Fprintf(w, "  waiting: %s (%s)\n", waiting, time.Since(start).Round(time.Second))
 		}
 	}
 }
