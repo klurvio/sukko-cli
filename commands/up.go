@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/klurvio/sukko-cli/compose"
@@ -70,6 +71,12 @@ func runUp(cmd *cobra.Command, _ []string) error {
 	// Credentials encryption key (required by provisioning for encrypting secrets in DB)
 	if cfg.CredentialsEncKey != "" {
 		envOverrides["CREDENTIALS_ENCRYPTION_KEY"] = cfg.CredentialsEncKey
+	}
+
+	// Admin bootstrap key — provisioning registers this on first startup for JWT auth
+	adminPubKey := loadAdminPublicKey()
+	if adminPubKey != "" {
+		envOverrides["ADMIN_BOOTSTRAP_KEY"] = adminPubKey
 	}
 
 	// best-effort: license key passthrough is optional; decrypt failure is non-fatal
@@ -245,4 +252,19 @@ func provisionDefaultTenant(cmd *cobra.Command) error {
 	}
 
 	return nil
+}
+
+// loadAdminPublicKey reads the admin public key (raw base64) from the context directory.
+// Returns empty string if no keypair exists (user hasn't run 'sukko auth keygen').
+func loadAdminPublicKey() string {
+	keyPath := resolveAdminKeyPath()
+	if keyPath == "" {
+		return ""
+	}
+	pubPath := strings.TrimSuffix(keyPath, filepath.Ext(keyPath)) + ".pub"
+	data, err := os.ReadFile(pubPath) //nolint:gosec // G304: path derived from context directory, not user input
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
