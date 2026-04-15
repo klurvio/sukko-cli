@@ -124,14 +124,11 @@ func resolveTesterToken() string {
 func loadAdminSigner() (client.AuthSigner, error) {
 	keyPath := resolveAdminKeyPath()
 	if keyPath == "" {
-		return nil, nil // no keypair yet — run 'sukko auth keygen'
+		return nil, errors.New("admin keypair not found — run 'sukko auth keygen' first")
 	}
 
 	data, err := os.ReadFile(keyPath) //nolint:gosec // G304: path derived from context directory, not user input
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("read admin key %s: %w", keyPath, err)
 	}
 
@@ -150,11 +147,15 @@ func loadAdminSigner() (client.AuthSigner, error) {
 		return nil, errors.New("admin key is not Ed25519")
 	}
 
-	// Key ID: read from admin.kid file if it exists
+	// Key ID: required for JWT kid header — must match what provisioning registered
 	kidPath := strings.TrimSuffix(keyPath, filepath.Ext(keyPath)) + ".kid"
-	kid := "unknown"
-	if kidData, err := os.ReadFile(kidPath); err == nil { //nolint:gosec // G304: path derived from context directory
-		kid = strings.TrimSpace(string(kidData))
+	kidData, err := os.ReadFile(kidPath) //nolint:gosec // G304: path derived from context directory
+	if err != nil {
+		return nil, fmt.Errorf("read admin key ID %s: %w (run 'sukko auth keygen' to regenerate)", kidPath, err)
+	}
+	kid := strings.TrimSpace(string(kidData))
+	if kid == "" {
+		return nil, fmt.Errorf("admin key ID file is empty: %s", kidPath)
 	}
 
 	name := "admin"

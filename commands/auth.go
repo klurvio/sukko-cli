@@ -77,6 +77,12 @@ var authKeygenCmd = &cobra.Command{
 			return fmt.Errorf("write public key: %w", err)
 		}
 
+		// Save key ID — matches provisioning's auto-registered bootstrap key ID
+		kidPath := filepath.Join(dir, "admin.kid")
+		if err := os.WriteFile(kidPath, []byte("bootstrap-0\n"), 0o600); err != nil {
+			return fmt.Errorf("write key ID: %w", err)
+		}
+
 		fmt.Fprintf(cmd.OutOrStdout(), "Keypair generated:\n  Private: %s\n  Public:  %s\n", keyPath, pubPath)
 		fmt.Fprintf(cmd.OutOrStdout(), "\nFor Kubernetes bootstrap:\n  helm upgrade ... --set provisioning.adminBootstrapKey=\"%s\"\n", pubBase64)
 		return nil
