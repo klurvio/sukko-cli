@@ -34,12 +34,12 @@ func NewKeypairSigner(privateKey ed25519.PrivateKey, keyID, keyName string) *Key
 func (s *KeypairSigner) SignRequest(req *http.Request) {
 	now := time.Now()
 	claims := jwt.MapClaims{
-		"iss":  "sukko-admin",
-		"sub":  s.keyName,
-		"role": "admin",
-		"exp":  jwt.NewNumericDate(now.Add(5 * time.Minute)),
-		"iat":  jwt.NewNumericDate(now),
-		"jti":  uuid.NewString(),
+		"iss":   "sukko-admin",
+		"sub":   s.keyName,
+		"roles": []string{"admin"},
+		"exp":   jwt.NewNumericDate(now.Add(5 * time.Minute)),
+		"iat":   jwt.NewNumericDate(now),
+		"jti":   uuid.NewString(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
