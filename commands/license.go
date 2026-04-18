@@ -8,12 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/klurvio/sukko-cli/client"
 	clicontext "github.com/klurvio/sukko-cli/context"
 	"github.com/spf13/cobra"
 )
 
 func init() {
-	licenseCmd.AddCommand(licenseSetCmd, licenseShowCmd, licenseRemoveCmd)
+	licenseCmd.AddCommand(licenseSetCmd, licenseShowCmd, licenseRemoveCmd, licensePushCmd)
 	rootCmd.AddCommand(licenseCmd)
 }
 
@@ -209,6 +210,88 @@ func runLicenseRemove(cmd *cobra.Command, _ []string) error {
 
 	fmt.Fprintf(cmd.OutOrStdout(), "License key removed from context %q.\n", ctx.Name)
 	return nil
+}
+
+// --- sukko license push ---
+
+var licensePushCmd = &cobra.Command{
+	Use:   "push [key]",
+	Short: "Push a license key to a running deployment",
+	Long: `Push a Sukko license key to a running provisioning service via
+POST /api/v1/license. The license is applied immediately without
+restarting services.
+
+If no key argument is provided, you will be prompted for input to avoid
+the key appearing in shell history.
+
+This command does NOT modify the local context — use 'sukko license set'
+to persist the key for future 'sukko up' invocations.`,
+	RunE: runLicensePush,
+}
+
+func runLicensePush(cmd *cobra.Command, args []string) error {
+	// 1. Get key from args or prompt (matching license set pattern)
+	var key string
+	if len(args) > 0 {
+		key = args[0]
+	} else {
+		fmt.Fprint(cmd.OutOrStdout(), "License key: ")
+		if _, err := fmt.Scanln(&key); err != nil {
+			return fmt.Errorf("read license key: %w", err)
+		}
+	}
+
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return errors.New("license key is required")
+	}
+
+	// 2. Local format validation
+	claims, err := decodeLicenseClaims(key)
+	if err != nil {
+		return fmt.Errorf("validate license key: %w", err)
+	}
+
+	// 3. Warn if expired (don't fail — server is authoritative)
+	if claims.Exp > 0 && time.Unix(claims.Exp, 0).Before(time.Now()) {
+		fmt.Fprintf(cmd.ErrOrStderr(),
+			"Warning: this license appears to be expired (%s). The server's validation is authoritative.\n",
+			time.Unix(claims.Exp, 0).Format("2006-01-02"))
+	}
+
+	// 4. Create admin-authenticated client (fails fast if no keypair)
+	c, err := newClient()
+	if err != nil {
+		return err
+	}
+
+	// 5. Push license to provisioning
+	resp, err := c.PushLicense(cmd.Context(), key)
+	if err != nil {
+		if errors.Is(err, client.ErrAPIUnauthorized) {
+			return errors.New("admin authentication failed — ensure your admin key is registered via 'sukko auth register' or ADMIN_BOOTSTRAP_KEY")
+		}
+		if errors.Is(err, client.ErrAPIRateLimited) {
+			return fmt.Errorf("license endpoint is rate-limited — %w", err)
+		}
+		return fmt.Errorf("push license: %w", err)
+	}
+
+	// 6. Report success
+	fmt.Fprintf(cmd.OutOrStdout(), "License applied. Edition: %s, Org: %s, Expires: %s\n",
+		capitalizeEdition(resp.Edition), resp.Org, formatExpiry(parseExpiry(resp.ExpiresAt)))
+
+	return nil
+}
+
+// parseExpiry converts an RFC3339 expiry string to a Unix timestamp.
+// Returns 0 if parsing fails (formatExpiry handles 0 as "none").
+func parseExpiry(s string) int64 {
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return 0
+	}
+	return t.Unix()
 }
 
 // requireActiveContext returns the store and active context, or an error.

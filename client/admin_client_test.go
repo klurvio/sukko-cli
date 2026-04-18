@@ -627,3 +627,114 @@ func TestAdminClient_RevokeToken_EmptyTenant(t *testing.T) {
 		t.Error("expected error for empty tenantID")
 	}
 }
+
+func TestPushLicense(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		status      int
+		body        string
+		headers     map[string]string
+		wantErr     error
+		wantEdition string
+	}{
+		{
+			name:        "200 success",
+			status:      http.StatusOK,
+			body:        `{"edition":"pro","org":"Acme","expires_at":"2027-04-08T00:00:00Z","status":"reloaded"}`,
+			wantEdition: "pro",
+		},
+		{
+			name:    "401 unauthorized",
+			status:  http.StatusUnauthorized,
+			body:    `{"code":"UNAUTHORIZED","message":"invalid admin credentials"}`,
+			wantErr: ErrAPIUnauthorized,
+		},
+		{
+			name:    "429 rate limited with Retry-After",
+			status:  http.StatusTooManyRequests,
+			body:    `{"code":"RATE_LIMITED","message":"too many requests"}`,
+			headers: map[string]string{"Retry-After": "6"},
+			wantErr: ErrAPIRateLimited,
+		},
+		{
+			name:    "429 rate limited without Retry-After",
+			status:  http.StatusTooManyRequests,
+			body:    `{"code":"RATE_LIMITED","message":"too many requests"}`,
+			wantErr: ErrAPIRateLimited,
+		},
+		{
+			name:    "400 invalid signature",
+			status:  http.StatusBadRequest,
+			body:    `{"code":"INVALID_SIGNATURE","message":"Ed25519 signature verification failed"}`,
+			wantErr: ErrAPIBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost || r.URL.Path != "/api/v1/license" {
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+
+				// Verify request body
+				var req map[string]string
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					t.Errorf("decode request body: %v", err)
+				}
+				if req["key"] == "" {
+					t.Error("missing key in request body")
+				}
+
+				for k, v := range tt.headers {
+					w.Header().Set(k, v)
+				}
+				w.WriteHeader(tt.status)
+				fmt.Fprint(w, tt.body)
+			}))
+			defer srv.Close()
+
+			c, err := New(Config{BaseURL: srv.URL})
+			if err != nil {
+				t.Fatalf("create client: %v", err)
+			}
+
+			resp, err := c.PushLicense(context.Background(), "test-license-key")
+
+			if tt.wantErr != nil {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("error = %v, want %v", err, tt.wantErr)
+				}
+				// Check Retry-After is included in 429 error message
+				if tt.headers != nil && tt.headers["Retry-After"] != "" {
+					if !strings.Contains(err.Error(), tt.headers["Retry-After"]) {
+						t.Errorf("error should contain Retry-After value %q: %v", tt.headers["Retry-After"], err)
+					}
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if resp.Edition != tt.wantEdition {
+				t.Errorf("edition = %q, want %q", resp.Edition, tt.wantEdition)
+			}
+			if resp.Org != "Acme" {
+				t.Errorf("org = %q, want %q", resp.Org, "Acme")
+			}
+			if resp.Status != "reloaded" {
+				t.Errorf("status = %q, want %q", resp.Status, "reloaded")
+			}
+		})
+	}
+}

@@ -23,6 +23,7 @@ var (
 	ErrAPIUnauthorized = errors.New("API unauthorized")
 	ErrAPIForbidden    = errors.New("API forbidden")
 	ErrAPINotFound     = errors.New("API not found")
+	ErrAPIRateLimited  = errors.New("API rate limited")
 	ErrAPIInternal     = errors.New("API internal error")
 )
 
@@ -418,4 +419,73 @@ func encodeParams(params map[string]string) string {
 		v.Set(key, val)
 	}
 	return "?" + v.Encode()
+}
+
+// LicenseResponse holds the server response from a license push.
+type LicenseResponse struct {
+	Edition   string `json:"edition"`
+	Org       string `json:"org"`
+	ExpiresAt string `json:"expires_at"`
+	Status    string `json:"status"`
+}
+
+// PushLicense posts a license key to the provisioning service.
+// Returns the applied license details on success, or an actionable error.
+// Handles 429 (rate limited) with Retry-After header extraction.
+func (c *AdminClient) PushLicense(ctx context.Context, key string) (*LicenseResponse, error) {
+	body := map[string]string{"key": key}
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/license", bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if c.signer != nil {
+		c.signer.SignRequest(req)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("execute request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		respStr := string(respBody)
+
+		switch resp.StatusCode {
+		case http.StatusUnauthorized:
+			return nil, fmt.Errorf("%w: %s", ErrAPIUnauthorized, respStr)
+		case http.StatusTooManyRequests:
+			retryAfter := resp.Header.Get("Retry-After")
+			if retryAfter != "" {
+				return nil, fmt.Errorf("%w: retry after %s seconds", ErrAPIRateLimited, retryAfter)
+			}
+			return nil, fmt.Errorf("%w: %s", ErrAPIRateLimited, respStr)
+		case http.StatusForbidden:
+			return nil, fmt.Errorf("%w: %s", ErrAPIForbidden, respStr)
+		default:
+			if resp.StatusCode < 500 {
+				return nil, fmt.Errorf("%w (HTTP %d): %s", ErrAPIBadRequest, resp.StatusCode, respStr)
+			}
+			return nil, fmt.Errorf("%w (HTTP %d): %s", ErrAPIInternal, resp.StatusCode, respStr)
+		}
+	}
+
+	var result LicenseResponse
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, fmt.Errorf("unmarshal response: %w", err)
+	}
+
+	return &result, nil
 }
