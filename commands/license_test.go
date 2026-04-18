@@ -110,7 +110,7 @@ func TestLicenseCmd_Registration(t *testing.T) {
 	t.Parallel()
 
 	subs := licenseCmd.Commands()
-	wantNames := map[string]bool{"set": false, "show": false, "remove": false}
+	wantNames := map[string]bool{"set": false, "show": false, "remove": false, "push": false}
 
 	for _, sub := range subs {
 		if _, ok := wantNames[sub.Name()]; ok {
@@ -122,5 +122,53 @@ func TestLicenseCmd_Registration(t *testing.T) {
 		if !found {
 			t.Errorf("missing subcommand %q", name)
 		}
+	}
+}
+
+func TestRunLicensePush_BadFormat(t *testing.T) {
+	t.Parallel()
+
+	err := runLicensePush(licensePushCmd, []string{"not-a-valid-key"})
+	if err == nil {
+		t.Fatal("expected error for bad format")
+	}
+	if !strings.Contains(err.Error(), "validate license key") {
+		t.Errorf("error should contain 'validate license key': %v", err)
+	}
+}
+
+func TestRunLicensePush_EmptyKey(t *testing.T) {
+	t.Parallel()
+
+	err := runLicensePush(licensePushCmd, []string{""})
+	if err == nil {
+		t.Fatal("expected error for empty key")
+	}
+	if !strings.Contains(err.Error(), "license key is required") {
+		t.Errorf("error should contain 'license key is required': %v", err)
+	}
+}
+
+func TestParseExpiry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		input string
+		want  int64
+	}{
+		{"valid RFC3339", "2027-04-08T00:00:00Z", 1807142400},
+		{"invalid format", "not-a-date", 0},
+		{"empty", "", 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := parseExpiry(tt.input)
+			if got != tt.want {
+				t.Errorf("parseExpiry(%q) = %d, want %d", tt.input, got, tt.want)
+			}
+		})
 	}
 }
