@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/klurvio/sukko-cli/client"
+	"github.com/klurvio/sukko-cli/compose"
 	clicontext "github.com/klurvio/sukko-cli/context"
 	"github.com/spf13/cobra"
 )
@@ -265,7 +266,14 @@ func runLicensePush(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// 5. Push license to provisioning
+	// 5. Capture pre-push edition for transition detection (FR-001)
+	prevEdition, err := c.GetEdition(cmd.Context())
+	if err != nil {
+		// Non-fatal — can't detect transitions but can still push
+		prevEdition = nil
+	}
+
+	// 6. Push license to provisioning
 	resp, err := c.PushLicense(cmd.Context(), key)
 	if err != nil {
 		if errors.Is(err, client.ErrAPIUnauthorized) {
@@ -277,9 +285,80 @@ func runLicensePush(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("push license: %w", err)
 	}
 
-	// 6. Report success
+	// 7. Report success
 	fmt.Fprintf(cmd.OutOrStdout(), "License applied. Edition: %s, Org: %s, Expires: %s\n",
 		capitalizeEdition(resp.Edition), resp.Org, formatExpiry(parseExpiry(resp.ExpiresAt)))
+
+	// 8. Compose orchestration — local contexts only (FR-000a)
+	if resolvedCtx == nil || resolvedCtx.Type != "local" {
+		if resp.Edition == "enterprise" {
+			fmt.Fprintln(cmd.OutOrStdout(), "To start push-service in K8s: helm upgrade --set push-service.enabled=true")
+		}
+		return nil
+	}
+
+	// Detect edition transition
+	prevEditionStr := ""
+	if prevEdition != nil {
+		prevEditionStr = prevEdition.Edition
+	}
+	newEdition := resp.Edition
+
+	// No orchestration needed when neither edition is enterprise
+	if newEdition != "enterprise" && prevEditionStr != "enterprise" {
+		return nil
+	}
+
+	// For an upgrade to enterprise, validate backend compatibility before any side effects (FR-002)
+	if newEdition == "enterprise" && prevEditionStr != "enterprise" {
+		projCfg, err := loadProjectConfig()
+		if err != nil {
+			return fmt.Errorf("load project config: %w", err)
+		}
+		if projCfg == nil {
+			return errors.New("project config not found — run 'sukko init' first")
+		}
+		if projCfg.MessageBackend != "kafka" && projCfg.MessageBackend != "redpanda" {
+			return fmt.Errorf("enterprise push requires kafka or redpanda message backend (current: %s) — run 'sukko init' to reconfigure, then 'sukko up' again", projCfg.MessageBackend)
+		}
+	}
+
+	// Write compose file and create manager once — reused across all branches below
+	if err := compose.WriteComposeFile(composeFilePath()); err != nil {
+		return fmt.Errorf("write compose file: %w", err)
+	}
+	mgr, err := compose.NewManager(".", composeFilePath())
+	if err != nil {
+		return fmt.Errorf("create compose manager: %w", err)
+	}
+
+	switch {
+	case newEdition == "enterprise" && prevEditionStr != "enterprise":
+		// Start push-service (FR-003)
+		fmt.Fprintln(cmd.OutOrStdout(), "\nStarting push-service (Enterprise)...")
+		if err := mgr.StartService(cmd.Context(), cmd.OutOrStdout(), "push-service", []string{"enterprise"}, pushServiceTimeout); err != nil {
+			return fmt.Errorf("start push-service: %w", err)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Push-service is healthy.")
+	case newEdition == "enterprise" && prevEditionStr == "enterprise":
+		// Idempotent — already enterprise (FR-007)
+		if pushServiceHealthy(cmd.Context(), mgr) {
+			fmt.Fprintln(cmd.OutOrStdout(), "Push-service already running and healthy.")
+		} else {
+			// Push-service unhealthy/absent — retry start
+			fmt.Fprintln(cmd.OutOrStdout(), "\nRestarting push-service...")
+			if err := mgr.StartService(cmd.Context(), cmd.OutOrStdout(), "push-service", []string{"enterprise"}, pushServiceTimeout); err != nil {
+				return fmt.Errorf("start push-service: %w", err)
+			}
+		}
+	case prevEditionStr == "enterprise" && newEdition != "enterprise":
+		// Downgrade FROM enterprise (FR-005)
+		fmt.Fprintln(cmd.OutOrStdout(), "\nStopping push-service (no longer Enterprise)...")
+		if err := mgr.StopService(cmd.Context(), "push-service"); err != nil {
+			return fmt.Errorf("stop push-service: %w", err)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Push-service stopped.")
+	}
 
 	return nil
 }

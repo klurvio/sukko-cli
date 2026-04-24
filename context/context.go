@@ -5,6 +5,7 @@ import "fmt"
 // Context represents a named environment configuration for the CLI.
 type Context struct {
 	Name            string `json:"name"`
+	Type            string `json:"type,omitempty"` // "local" (compose-managed) or "remote" (K8s/staging/prod)
 	GatewayURL      string `json:"gateway_url"`
 	ProvisioningURL string `json:"provisioning_url"`
 	TesterURL       string `json:"tester_url,omitempty"`

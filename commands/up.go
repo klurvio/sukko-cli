@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/klurvio/sukko-cli/client"
 	"github.com/klurvio/sukko-cli/compose"
 	"github.com/spf13/cobra"
 )
@@ -104,44 +106,16 @@ func runUp(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("start services: %w", err)
 	}
 
-	// Wait for health — resolve URLs from context.
+	// Wait for core services to become healthy (delegates to docker compose ps)
 	fmt.Fprintln(cmd.OutOrStdout(), "\nWaiting for services...")
 
-	provURL := defaultAPIURL
-	gwHTTP := defaultGatewayHTTP
-	serverURL := defaultServerURL
-	testerURL := defaultTesterURL
-
-	if resolvedCtx != nil {
-		if resolvedCtx.ProvisioningURL != "" {
-			provURL = resolvedCtx.ProvisioningURL
-		}
-		if resolvedCtx.GatewayURL != "" {
-			gwHTTP = wsToHTTP(resolvedCtx.GatewayURL)
-		}
-		if resolvedCtx.TesterURL != "" {
-			testerURL = resolvedCtx.TesterURL
-		}
-	}
-
-	targets := []compose.HealthTarget{
-		{Name: "provisioning", URL: provURL + "/health"},
-		{Name: "ws-gateway", URL: gwHTTP + "/health"},
-		{Name: "ws-server", URL: serverURL + "/health"},
-		{Name: "sukko-tester", URL: testerURL + "/health"},
-	}
-
-	if err := compose.WaitForHealth(cmd.Context(), cmd.OutOrStdout(), targets, healthTimeout); err != nil {
+	if err := mgr.WaitForHealth(cmd.Context(), cmd.OutOrStdout(), []string{"provisioning", "ws-gateway", "ws-server", "sukko-tester"}, healthTimeout); err != nil {
 		return fmt.Errorf("health check: %w", err)
 	}
 
-	// Observability services — warn on error, don't fail (NFR-002)
+	// Observability services — warn on error, don't fail
 	if cfg.Observability {
-		obsTargets := []compose.HealthTarget{
-			{Name: "grafana", URL: "http://localhost:3030/api/health"},
-			{Name: "prometheus", URL: "http://localhost:9091/-/healthy"},
-		}
-		if err := compose.WaitForHealth(cmd.Context(), cmd.OutOrStdout(), obsTargets, healthTimeout); err != nil {
+		if err := mgr.WaitForHealth(cmd.Context(), cmd.OutOrStdout(), []string{"grafana", "prometheus"}, healthTimeout); err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: observability services not healthy: %v\n", err)
 		}
 	}
@@ -152,6 +126,9 @@ func runUp(cmd *cobra.Command, _ []string) error {
 		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: default tenant provisioning failed: %v\n", err)
 		fmt.Fprintln(cmd.ErrOrStderr(), "  Services are running. Create a tenant manually with 'sukko tenant create'.")
 	}
+
+	// Push-service reconciliation — start/stop based on final edition
+	reconcilePushService(cmd, mgr, cfg)
 
 	fmt.Fprintln(cmd.OutOrStdout(), "\nSukko is ready! Try:")
 	fmt.Fprintln(cmd.OutOrStdout(), "  sukko status")
@@ -267,4 +244,91 @@ func loadAdminPublicKey() string {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
+}
+
+const pushServiceTimeout = 30 * time.Second
+
+// reconcilePushService starts or stops push-service based on the final edition.
+// Uses findLocalContext for license key and provisioning URL (FR-006).
+// Precondition: runUp has already verified resolvedCtx != nil, which guarantees resolvedStore != nil.
+func reconcilePushService(cmd *cobra.Command, mgr *compose.Manager, cfg ProjectConfig) {
+	localCtx, err := resolvedStore.FindLocalContext()
+	if err != nil || localCtx == nil {
+		return // no local context — skip reconciliation
+	}
+
+	// Decrypt license key from local context
+	licenseKey, err := localCtx.LicenseKey(resolvedStore.Key())
+	if err != nil || licenseKey == "" {
+		return // no license key — skip reconciliation
+	}
+
+	// Create client targeting local provisioning
+	localSigner, err := loadAdminSigner()
+	if err != nil {
+		return // no admin keypair — skip silently
+	}
+
+	c, err := client.New(client.Config{
+		BaseURL: localCtx.ProvisioningURL,
+		Signer:  localSigner,
+	})
+	if err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not create provisioning client: %v — push-service not reconciled.\n", err)
+		return
+	}
+
+	// Push license explicitly (idempotent — provisioning may have auto-loaded it)
+	resp, err := c.PushLicense(cmd.Context(), licenseKey)
+	if err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: license push failed: %v — push-service not started. Run 'sukko license push <key>' to retry.\n", err)
+		return
+	}
+
+	edition := resp.Edition
+	compatibleBackend := cfg.MessageBackend == "kafka" || cfg.MessageBackend == "redpanda"
+
+	if edition == "enterprise" && compatibleBackend {
+		if !pushServiceHealthy(cmd.Context(), mgr) {
+			fmt.Fprintln(cmd.OutOrStdout(), "\nStarting push-service (Enterprise)...")
+			if err := mgr.StartService(cmd.Context(), cmd.OutOrStdout(), "push-service", []string{"enterprise"}, pushServiceTimeout); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: push-service failed to start: %v\n", err)
+			}
+		}
+	} else if edition != "enterprise" {
+		if pushServiceRunning(cmd.Context(), mgr) {
+			fmt.Fprintln(cmd.OutOrStdout(), "\nStopping push-service (no longer Enterprise)...")
+			if err := mgr.StopService(cmd.Context(), "push-service"); err != nil {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to stop push-service: %v\n", err)
+			}
+		}
+	}
+}
+
+// pushServiceHealthy returns true if push-service reports Health=="healthy" via docker compose ps.
+func pushServiceHealthy(ctx context.Context, mgr *compose.Manager) bool {
+	statuses, err := mgr.Status(ctx)
+	if err != nil {
+		return false
+	}
+	for _, s := range statuses {
+		if s.Service == "push-service" && s.Health == "healthy" {
+			return true
+		}
+	}
+	return false
+}
+
+// pushServiceRunning returns true if push-service has a running container.
+func pushServiceRunning(ctx context.Context, mgr *compose.Manager) bool {
+	statuses, err := mgr.Status(ctx)
+	if err != nil {
+		return false
+	}
+	for _, s := range statuses {
+		if s.Service == "push-service" && s.State == "running" {
+			return true
+		}
+	}
+	return false
 }

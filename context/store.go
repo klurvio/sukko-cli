@@ -124,11 +124,7 @@ func (s *Store) List() ([]Context, error) {
 		}
 		ctx, err := s.Get(name)
 		if err != nil {
-			if errors.Is(err, ErrContextNotFound) {
-				continue
-			}
-			// Surface unexpected errors (permissions, I/O) to stderr
-			fmt.Fprintf(os.Stderr, "warning: skipping context %q: %v\n", name, err)
+			// Skip unreadable context files (permissions, I/O, corrupt JSON) — best-effort enumeration
 			continue
 		}
 		contexts = append(contexts, *ctx)
@@ -220,6 +216,20 @@ func (s *Store) Key() []byte {
 	cp := make([]byte, len(s.key))
 	copy(cp, s.key)
 	return cp
+}
+
+// FindLocalContext returns the first context with Type=="local", or nil if none exists.
+func (s *Store) FindLocalContext() (*Context, error) {
+	contexts, err := s.List()
+	if err != nil {
+		return nil, fmt.Errorf("find local context: %w", err)
+	}
+	for _, ctx := range contexts {
+		if ctx.Type == "local" {
+			return &ctx, nil
+		}
+	}
+	return nil, nil
 }
 
 // Dir returns the base contexts directory path.
