@@ -115,6 +115,7 @@ func runContextAdd(cmd *cobra.Command, args []string) error {
 
 	ctx := &clicontext.Context{
 		Name:            name,
+		Type:            "remote",
 		GatewayURL:      ctxGatewayURL,
 		ProvisioningURL: ctxProvisioningURL,
 		TesterURL:       ctxTesterURL,
@@ -344,6 +345,7 @@ func runContextCreate(cmd *cobra.Command, args []string) error {
 	// 5. Build and save context
 	ctx := &clicontext.Context{
 		Name:            name,
+		Type:            "remote",
 		GatewayURL:      gwURL,
 		ProvisioningURL: provURL,
 		TesterURL:       testerURL,

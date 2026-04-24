@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
+	"time"
 )
 
 //go:embed docker-compose.yml
@@ -29,6 +32,7 @@ func WriteComposeFile(path string) error {
 type Manager struct {
 	projectDir  string
 	composeFile string
+	profiles    []string // accumulated active profiles
 }
 
 // NewManager creates a Manager for the given project directory and compose file path.
@@ -43,9 +47,14 @@ func NewManager(projectDir, composeFile string) (*Manager, error) {
 	return &Manager{projectDir: projectDir, composeFile: composeFile}, nil
 }
 
-// composeArgs returns the base docker compose args with the -f flag.
+// composeArgs returns the base docker compose args with the -f flag and tracked profiles.
 func (m *Manager) composeArgs() []string {
-	return []string{"compose", "-f", m.composeFile}
+	args := make([]string, 0, 3+2*len(m.profiles))
+	args = append(args, "compose", "-f", m.composeFile)
+	for _, p := range m.profiles {
+		args = append(args, "--profile", p)
+	}
+	return args
 }
 
 // ServiceStatus represents the status of a Docker Compose service.
@@ -60,10 +69,8 @@ type ServiceStatus struct {
 // Up starts services with the given profiles and environment overrides.
 // If pull is true, images are always pulled before starting (--pull always).
 func (m *Manager) Up(ctx context.Context, profiles []string, envOverrides map[string]string, pull bool) error {
+	m.profiles = profiles
 	args := m.composeArgs()
-	for _, p := range profiles {
-		args = append(args, "--profile", p)
-	}
 	args = append(args, "up", "-d")
 	if pull {
 		args = append(args, "--pull", "always")
@@ -176,4 +183,115 @@ func (m *Manager) IsRunning(ctx context.Context) bool {
 		return false
 	}
 	return strings.TrimSpace(string(out)) != ""
+}
+
+const healthPollInterval = 2 * time.Second
+
+// WaitForHealth polls docker compose ps until all named services report Health=="healthy".
+func (m *Manager) WaitForHealth(ctx context.Context, w io.Writer, serviceNames []string, timeout time.Duration) error {
+	return waitForHealth(ctx, w, serviceNames, timeout, func(c context.Context) ([]ServiceStatus, error) {
+		return m.Status(c)
+	})
+}
+
+// waitForHealth is the inner testable function for health polling.
+func waitForHealth(ctx context.Context, w io.Writer, serviceNames []string, timeout time.Duration, getStatus func(context.Context) ([]ServiceStatus, error)) error {
+	if len(serviceNames) == 0 {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	reported := make(map[string]bool)
+	start := time.Now()
+	ticker := time.NewTicker(healthPollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			var unhealthy []string
+			for _, name := range serviceNames {
+				if !reported[name] {
+					unhealthy = append(unhealthy, name)
+				}
+			}
+			return fmt.Errorf("health check timeout after %s: services still unhealthy: %v",
+				timeout.Round(time.Second), unhealthy)
+		case <-ticker.C:
+			statuses, err := getStatus(ctx)
+			if err != nil {
+				continue // transient docker compose ps failure
+			}
+
+			allHealthy := true
+			var waiting []string
+			for _, name := range serviceNames {
+				if reported[name] {
+					continue
+				}
+				healthy := false
+				for _, s := range statuses {
+					if s.Service == name && s.Health == "healthy" {
+						healthy = true
+						break
+					}
+				}
+				if healthy {
+					elapsed := time.Since(start).Round(time.Second)
+					_, _ = fmt.Fprintf(w, "  %-16s healthy (%s)\n", name+":", elapsed)
+					reported[name] = true
+				} else {
+					allHealthy = false
+					waiting = append(waiting, name)
+				}
+			}
+
+			if allHealthy {
+				return nil
+			}
+
+			_, _ = fmt.Fprintf(w, "  waiting: %v (%s)\n", waiting, time.Since(start).Round(time.Second))
+		}
+	}
+}
+
+// StartService starts a single service with the given profiles and waits for it to become healthy.
+func (m *Manager) StartService(ctx context.Context, w io.Writer, service string, profiles []string, timeout time.Duration) error {
+	for _, p := range profiles {
+		if !slices.Contains(m.profiles, p) {
+			m.profiles = append(m.profiles, p)
+		}
+	}
+
+	args := m.composeArgs()
+	args = append(args, "up", "-d", service)
+
+	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // G204: args built from fixed strings and validated profile/service names
+	cmd.Dir = m.projectDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("start service %s: %w", service, err)
+	}
+
+	return m.WaitForHealth(ctx, w, []string{service}, timeout)
+}
+
+// StopService stops a single service. Safe to call on absent containers.
+func (m *Manager) StopService(ctx context.Context, service string) error {
+	args := m.composeArgs()
+	args = append(args, "stop", service)
+
+	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // G204: args built from fixed strings
+	cmd.Dir = m.projectDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("stop service %s: %w", service, err)
+	}
+	return nil
 }

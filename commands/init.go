@@ -159,6 +159,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 
 	ctx := &clicontext.Context{
 		Name:            "local",
+		Type:            "local",
 		GatewayURL:      defaultGatewayURL,
 		ProvisioningURL: defaultAPIURL,
 		TesterURL:       defaultTesterURL,

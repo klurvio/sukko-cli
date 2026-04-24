@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"cmp"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -10,7 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 
 	"github.com/spf13/cobra"
 )
@@ -227,8 +228,8 @@ func loadLatestPrivateKey(tenant string) (string, error) {
 		return "", nil
 	}
 
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i].modTime > keys[j].modTime
+	slices.SortFunc(keys, func(a, b keyFile) int {
+		return cmp.Compare(b.modTime, a.modTime) // descending: newest first
 	})
 
 	return keys[0].path, nil

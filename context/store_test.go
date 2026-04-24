@@ -314,3 +314,82 @@ func TestStoreFilePermissions(t *testing.T) {
 		t.Errorf("file permissions = %o, want %o", perm, contextFilePerms)
 	}
 }
+
+func TestFindLocalContext_OneLocal(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	_ = store.Add(&Context{Name: "local", Type: "local", GatewayURL: "ws://localhost:3000"})
+	_ = store.Add(&Context{Name: "staging", Type: "remote", GatewayURL: "ws://staging:3000"})
+
+	ctx, err := store.FindLocalContext()
+	if err != nil {
+		t.Fatalf("FindLocalContext: %v", err)
+	}
+	if ctx == nil {
+		t.Fatal("expected local context, got nil")
+	}
+	if ctx.Name != "local" {
+		t.Errorf("Name = %q, want %q", ctx.Name, "local")
+	}
+	if ctx.Type != "local" {
+		t.Errorf("Type = %q, want %q", ctx.Type, "local")
+	}
+}
+
+func TestFindLocalContext_NoLocal(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+
+	ctx, err := store.FindLocalContext()
+	if err != nil {
+		t.Fatalf("FindLocalContext: %v", err)
+	}
+	if ctx != nil {
+		t.Errorf("expected nil, got %+v", ctx)
+	}
+}
+
+func TestFindLocalContext_OnlyRemote(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	_ = store.Add(&Context{Name: "staging", Type: "remote", GatewayURL: "ws://staging:3000"})
+	_ = store.Add(&Context{Name: "prod", Type: "remote", GatewayURL: "ws://prod:3000"})
+
+	ctx, err := store.FindLocalContext()
+	if err != nil {
+		t.Fatalf("FindLocalContext: %v", err)
+	}
+	if ctx != nil {
+		t.Errorf("expected nil, got %+v", ctx)
+	}
+}
+
+func TestStoreList_SkipsCorruptContext(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+
+	if err := store.Add(&Context{Name: "valid", GatewayURL: "ws://localhost"}); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	// Write a corrupt JSON file directly into the contexts directory
+	corruptPath := filepath.Join(store.Dir(), "corrupt.json")
+	if err := os.WriteFile(corruptPath, []byte("not-valid-json{{{"), 0o600); err != nil {
+		t.Fatalf("WriteFile corrupt: %v", err)
+	}
+
+	list, err := store.List()
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(list) != 1 {
+		t.Errorf("List length = %d, want 1 (corrupt entry should be skipped)", len(list))
+	}
+	if list[0].Name != "valid" {
+		t.Errorf("List[0].Name = %q, want %q", list[0].Name, "valid")
+	}
+}

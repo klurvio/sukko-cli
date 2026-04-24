@@ -532,6 +532,27 @@ sukko license remove
 
 License keys are encrypted at rest. The key is automatically passed to services on `sukko up`.
 
+### Enterprise Upgrade
+
+Push an Enterprise license to a running deployment to enable push notifications:
+
+```bash
+# Push Enterprise license — push-service starts automatically (local dev)
+sukko license push <enterprise-key>
+
+# Push Pro license — push-service stops automatically (downgrade)
+sukko license push <pro-key>
+```
+
+**Requirements**: Push-service requires `kafka` or `redpanda` message backend. If your backend is `direct` or `nats`, run `sukko init` to reconfigure before upgrading.
+
+**Fresh start**: If `SUKKO_LICENSE_KEY` is set to an Enterprise key, `sukko up` automatically starts push-service alongside core services.
+
+**Kubernetes**: After pushing the license, enable push-service via Helm:
+```bash
+helm upgrade sukko deployments/helm/sukko --set push-service.enabled=true
+```
+
 ## Health & Status
 
 ```bash

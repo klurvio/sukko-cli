@@ -2,9 +2,89 @@ package commands
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// chdir changes the working directory for the duration of a test.
+// Must NOT be combined with t.Parallel() — os.Chdir is global state.
+func chdir(t *testing.T, dir string) {
+	t.Helper()
+	orig, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir %s: %v", dir, err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+}
+
+func TestLoadProjectConfig_NotFound(t *testing.T) {
+	chdir(t, t.TempDir())
+
+	cfg, err := loadProjectConfig()
+	if err != nil {
+		t.Fatalf("expected nil error for missing config, got: %v", err)
+	}
+	if cfg != nil {
+		t.Errorf("expected nil config for missing file, got: %+v", cfg)
+	}
+}
+
+func TestLoadProjectConfig_CorruptJSON(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	configDir := filepath.Join(dir, sukkoConfigDir)
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, sukkoConfigFile), []byte("not-valid-json{{{"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	_, err := loadProjectConfig()
+	if err == nil {
+		t.Fatal("expected error for corrupt JSON")
+	}
+}
+
+func TestLoadProjectConfig_Valid(t *testing.T) {
+	dir := t.TempDir()
+	chdir(t, dir)
+
+	configDir := filepath.Join(dir, sukkoConfigDir)
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	want := ProjectConfig{
+		Database:       "postgres",
+		Broadcast:      "nats",
+		MessageBackend: "kafka",
+	}
+	data, err := json.Marshal(want)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, sukkoConfigFile), data, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	got, err := loadProjectConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil config")
+	}
+	if *got != want {
+		t.Errorf("config = %+v, want %+v", *got, want)
+	}
+}
 
 func TestProjectConfig_BackwardCompat(t *testing.T) {
 	t.Parallel()
