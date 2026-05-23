@@ -207,11 +207,7 @@ func provisionDefaultTenant(cmd *cobra.Command) error {
 	}
 
 	// Set catch-all routing rules
-	_, err = c.SetRoutingRules(ctx, "demo", map[string]any{
-		"rules": []map[string]any{
-			{"pattern": "*.*", "topic_suffix": "default"},
-		},
-	})
+	_, err = c.SetRoutingRules(ctx, "demo", defaultCatchAllRules())
 	if err != nil {
 		fmt.Fprintf(cmd.OutOrStdout(), "  Routing rules: %v\n", err)
 	} else {
@@ -229,6 +225,16 @@ func provisionDefaultTenant(cmd *cobra.Command) error {
 	}
 
 	return nil
+}
+
+// defaultCatchAllRules returns the routing rules request body for the catch-all default rule.
+// Extracted so up_test.go can assert the correct format without network calls.
+func defaultCatchAllRules() map[string]any {
+	return map[string]any{
+		"rules": []map[string]any{
+			{"pattern": "**", "topics": []string{"default"}, "priority": 100},
+		},
+	}
 }
 
 // loadAdminPublicKey reads the admin public key (raw base64) from the context directory.

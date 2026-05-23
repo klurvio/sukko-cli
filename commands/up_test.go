@@ -5,6 +5,44 @@ import (
 	"testing"
 )
 
+func TestDefaultCatchAllRules(t *testing.T) {
+	t.Parallel()
+
+	body := defaultCatchAllRules()
+
+	rulesRaw, ok := body["rules"]
+	if !ok {
+		t.Fatal("defaultCatchAllRules: missing 'rules' key")
+	}
+
+	rules, ok := rulesRaw.([]map[string]any)
+	if !ok || len(rules) != 1 {
+		t.Fatalf("defaultCatchAllRules: expected exactly 1 rule, got %v", rulesRaw)
+	}
+
+	rule := rules[0]
+
+	// Assert topics array is present and correct.
+	topicsRaw, ok := rule["topics"]
+	if !ok {
+		t.Fatal("rule missing 'topics' key")
+	}
+	topics, ok := topicsRaw.([]string)
+	if !ok || len(topics) != 1 || topics[0] != "default" {
+		t.Errorf("topics = %v, want [\"default\"]", topicsRaw)
+	}
+
+	// Assert priority is present.
+	if _, ok := rule["priority"]; !ok {
+		t.Error("rule missing 'priority' key")
+	}
+
+	// Assert topic_suffix is NOT present (old format must not appear).
+	if _, ok := rule["topic_suffix"]; ok {
+		t.Error("rule must not contain 'topic_suffix' key (stale format)")
+	}
+}
+
 func TestBuildComposeConfig_Observability(t *testing.T) {
 	t.Parallel()
 

@@ -32,7 +32,7 @@ func init() {
 }
 
 func isTTY() bool {
-	return term.IsTerminal(int(os.Stdout.Fd())) //nolint:gosec // G115: Fd() returns uintptr; safe truncation on all supported platforms
+	return term.IsTerminal(int(os.Stdout.Fd()))
 }
 
 // defaultWriter returns os.Stdout. Used as the default output target for print helpers.
