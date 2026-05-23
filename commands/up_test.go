@@ -43,7 +43,6 @@ func TestDefaultCatchAllRules(t *testing.T) {
 	}
 }
 
-
 func TestBuildComposeConfig_Observability(t *testing.T) {
 	t.Parallel()
 

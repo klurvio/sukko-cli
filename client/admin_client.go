@@ -391,7 +391,7 @@ func (c *AdminClient) ListAdminKeys(ctx context.Context) (map[string]any, error)
 // Unlike doJSON, it returns 4xx/5xx responses as (statusCode, parsedBody, nil) so
 // callers can inspect the response code field for fine-grained error mapping.
 // Network and JSON parsing errors are returned as (0, nil, error).
-func (c *AdminClient) doJSONFull(ctx context.Context, method, path string, body any) (int, map[string]any, error) {
+func (c *AdminClient) doJSONFull(ctx context.Context, method, path string, body any) (status int, parsed map[string]any, err error) {
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
