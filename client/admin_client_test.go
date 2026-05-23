@@ -398,6 +398,108 @@ func TestAdminClient_ErrorResponse(t *testing.T) {
 	}
 }
 
+func TestAdminClient_AddRoutingRule(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		serverStatus int
+		serverBody   string
+		wantErr      bool
+		wantSentinel error
+		wantMethod   string
+		wantPath     string
+		wantBodyKey  string // top-level key that must be present in the request body
+	}{
+		{
+			name:         "sends POST to correct URL with rule envelope",
+			serverStatus: http.StatusCreated,
+			serverBody:   `{"rule":{"pattern":"trades.**","topics":["trades"],"priority":0}}`,
+			wantMethod:   "POST",
+			wantPath:     "/api/v1/tenants/demo/routing-rules",
+			wantBodyKey:  "rule",
+		},
+		{
+			name:         "409 ROUTING_RULE_DUPLICATE_PATTERN → typed error",
+			serverStatus: http.StatusConflict,
+			serverBody:   `{"code":"ROUTING_RULE_DUPLICATE_PATTERN","message":"already exists"}`,
+			wantErr:      true,
+			wantSentinel: ErrDuplicateRoutingPattern,
+		},
+		{
+			name:         "409 ROUTING_RULE_DUPLICATE_PRIORITY → typed error",
+			serverStatus: http.StatusConflict,
+			serverBody:   `{"code":"ROUTING_RULE_DUPLICATE_PRIORITY","message":"already exists"}`,
+			wantErr:      true,
+			wantSentinel: ErrDuplicateRoutingPriority,
+		},
+		{
+			name:         "409 unknown conflict code → generic bad request error",
+			serverStatus: http.StatusConflict,
+			serverBody:   `{"code":"UNKNOWN_CODE","message":"conflict"}`,
+			wantErr:      true,
+			wantSentinel: ErrAPIBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var gotMethod, gotPath string
+			var gotBody map[string]any
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotMethod = r.Method
+				gotPath = r.URL.Path
+				if r.Body != nil && r.ContentLength > 0 {
+					if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+						t.Errorf("decode request body: %v", err)
+					}
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.serverStatus)
+				fmt.Fprint(w, tt.serverBody)
+			}))
+			defer srv.Close()
+
+			c, _ := New(Config{BaseURL: srv.URL, Signer: testSigner(t)})
+
+			result, err := c.AddRoutingRule(context.Background(), "demo", RoutingRule{
+				Pattern:  "trades.**",
+				Topics:   []string{"trades"},
+				Priority: 0,
+			})
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error but got nil")
+				}
+				if tt.wantSentinel != nil && !errors.Is(err, tt.wantSentinel) {
+					t.Errorf("error %q is not %q", err.Error(), tt.wantSentinel)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if gotMethod != tt.wantMethod {
+				t.Errorf("method = %q, want %q", gotMethod, tt.wantMethod)
+			}
+			if gotPath != tt.wantPath {
+				t.Errorf("path = %q, want %q", gotPath, tt.wantPath)
+			}
+			if tt.wantBodyKey != "" {
+				if _, ok := gotBody[tt.wantBodyKey]; !ok {
+					t.Errorf("request body missing key %q; got %v", tt.wantBodyKey, gotBody)
+				}
+			}
+			_ = result
+		})
+	}
+}
+
 func TestAdminClient_EmptyBaseURL(t *testing.T) {
 	t.Parallel()
 

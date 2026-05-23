@@ -25,6 +25,10 @@ var (
 	ErrAPINotFound     = errors.New("API not found")
 	ErrAPIRateLimited  = errors.New("API rate limited")
 	ErrAPIInternal     = errors.New("API internal error")
+
+	// Routing rule conflict errors.
+	ErrDuplicateRoutingPattern  = errors.New("routing rule with this pattern already exists")
+	ErrDuplicateRoutingPriority = errors.New("routing rule with this priority already exists")
 )
 
 // AdminClient communicates with the provisioning REST API.
@@ -216,6 +220,37 @@ func (c *AdminClient) DeleteRoutingRules(ctx context.Context, tenantID string) (
 	return c.doJSON(ctx, "DELETE", tenantPath(tenantID, "routing-rules"), nil)
 }
 
+// RoutingRule is the request body for AddRoutingRule.
+type RoutingRule struct {
+	Pattern  string   `json:"pattern"`
+	Topics   []string `json:"topics"`
+	Priority int      `json:"priority"`
+}
+
+// AddRoutingRule adds a single routing rule for a tenant via POST.
+// Returns ErrDuplicateRoutingPattern or ErrDuplicateRoutingPriority on 409 conflicts.
+func (c *AdminClient) AddRoutingRule(ctx context.Context, tenantID string, rule RoutingRule) (map[string]any, error) {
+	if err := requireTenantID(tenantID); err != nil {
+		return nil, err
+	}
+	status, resp, err := c.doJSONFull(ctx, "POST", tenantPath(tenantID, "routing-rules"), map[string]any{"rule": rule})
+	if err != nil {
+		return nil, err
+	}
+	if status == http.StatusConflict {
+		code, _ := resp["code"].(string)
+		switch code {
+		case "ROUTING_RULE_DUPLICATE_PATTERN":
+			return nil, fmt.Errorf("%w", ErrDuplicateRoutingPattern)
+		case "ROUTING_RULE_DUPLICATE_PRIORITY":
+			return nil, fmt.Errorf("%w", ErrDuplicateRoutingPriority)
+		default:
+			return nil, fmt.Errorf("%w (code=%s)", ErrAPIBadRequest, code)
+		}
+	}
+	return resp, nil
+}
+
 // --- Quotas ---
 
 // GetQuota retrieves the quota for a tenant.
@@ -351,6 +386,50 @@ func (c *AdminClient) ListAdminKeys(ctx context.Context) (map[string]any, error)
 }
 
 // --- Internal ---
+
+// doJSONFull performs an HTTP request and returns (statusCode, parsedBody, error).
+// Unlike doJSON, it returns 4xx/5xx responses as (statusCode, parsedBody, nil) so
+// callers can inspect the response code field for fine-grained error mapping.
+// Network and JSON parsing errors are returned as (0, nil, error).
+func (c *AdminClient) doJSONFull(ctx context.Context, method, path string, body any) (int, map[string]any, error) {
+	var bodyReader io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return 0, nil, fmt.Errorf("marshal request: %w", err)
+		}
+		bodyReader = bytes.NewReader(data)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
+	if err != nil {
+		return 0, nil, fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if c.signer != nil {
+		c.signer.SignRequest(req)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, nil, fmt.Errorf("execute request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	if err != nil {
+		return 0, nil, fmt.Errorf("read response: %w", err)
+	}
+
+	var result map[string]any
+	if len(respBody) > 0 {
+		if err := json.Unmarshal(respBody, &result); err != nil {
+			return resp.StatusCode, nil, fmt.Errorf("unmarshal response: %w", err)
+		}
+	}
+	return resp.StatusCode, result, nil
+}
 
 func (c *AdminClient) doJSON(ctx context.Context, method, path string, body any) (map[string]any, error) {
 	var bodyReader io.Reader

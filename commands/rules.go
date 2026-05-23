@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
+	"github.com/klurvio/sukko-cli/client"
 	"github.com/spf13/cobra"
 )
 
@@ -14,12 +16,19 @@ func init() {
 	rulesCmd.AddCommand(routingCmd, channelsCmd, rulesTestAccessCmd)
 
 	// routing subcommands
-	routingCmd.AddCommand(routingGetCmd, routingSetCmd, routingDeleteCmd)
+	routingCmd.AddCommand(routingGetCmd, routingSetCmd, routingDeleteCmd, routingAddCmd)
 	routingGetCmd.Flags().String("tenant", "", "Tenant ID (uses active tenant from context if not set)")
 	routingSetCmd.Flags().String("tenant", "", "Tenant ID (uses active tenant from context if not set)")
 	routingSetCmd.Flags().String("file", "", "Path to JSON routing rules file (required)")
 	_ = routingSetCmd.MarkFlagRequired("file")
 	routingDeleteCmd.Flags().String("tenant", "", "Tenant ID (uses active tenant from context if not set)")
+	routingAddCmd.Flags().String("tenant", "", "Tenant ID (uses active tenant from context if not set)")
+	routingAddCmd.Flags().String("pattern", "", "Channel pattern (e.g. trades.**, **)")
+	routingAddCmd.Flags().String("topics", "", "Comma-separated topic suffixes (e.g. trades,audit-log)")
+	routingAddCmd.Flags().Int("priority", 0, "Rule priority (lower = higher precedence; must be unique per tenant)")
+	_ = routingAddCmd.MarkFlagRequired("pattern")
+	_ = routingAddCmd.MarkFlagRequired("topics")
+	_ = routingAddCmd.MarkFlagRequired("priority")
 
 	// channels subcommands
 	channelsCmd.AddCommand(channelsGetCmd, channelsSetCmd, channelsDeleteCmd)
@@ -120,6 +129,66 @@ var routingDeleteCmd = &cobra.Command{
 		}
 		return printOutput(result, output)
 	},
+}
+
+var routingAddCmd = &cobra.Command{
+	Use:   "add",
+	Short: "Add a single routing rule for a tenant",
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		tenantID := resolveTenantFromCmd(cmd)
+		if tenantID == "" {
+			return errors.New("tenant ID required (use --tenant or set active tenant in context)")
+		}
+
+		pattern, _ := cmd.Flags().GetString("pattern")
+		topicsRaw, _ := cmd.Flags().GetString("topics")
+		priority, _ := cmd.Flags().GetInt("priority")
+
+		topics, err := parseTopics(topicsRaw)
+		if err != nil {
+			return err
+		}
+
+		c, err := newClient()
+		if err != nil {
+			return err
+		}
+
+		result, err := c.AddRoutingRule(cmd.Context(), tenantID, client.RoutingRule{
+			Pattern:  pattern,
+			Topics:   topics,
+			Priority: priority,
+		})
+		if err != nil {
+			switch {
+			case errors.Is(err, client.ErrDuplicateRoutingPattern):
+				return fmt.Errorf("a routing rule with pattern %q already exists", pattern)
+			case errors.Is(err, client.ErrDuplicateRoutingPriority):
+				return fmt.Errorf("a routing rule with priority %d already exists", priority)
+			default:
+				return fmt.Errorf("add routing rule: %w", err)
+			}
+		}
+		return printOutput(result, output)
+	},
+}
+
+// parseTopics splits a comma-separated topics string, trims whitespace,
+// and rejects empty entries (e.g. trailing comma or double comma).
+func parseTopics(raw string) ([]string, error) {
+	parts := strings.Split(raw, ",")
+	topics := make([]string, 0, len(parts))
+	for _, p := range parts {
+		t := strings.TrimSpace(p)
+		if t == "" {
+			return nil, errors.New("topics must not contain empty entries (check for trailing commas)")
+		}
+		topics = append(topics, t)
+	}
+	if len(topics) == 0 {
+		return nil, errors.New("at least one topic is required")
+	}
+	return topics, nil
 }
 
 // ─── Channel Rules ─────────────────────────────────────────────
