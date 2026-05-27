@@ -419,7 +419,7 @@ func promptSecret(cmd *cobra.Command, label, flagName, flagVal string) (string, 
 		return flagVal, nil
 	}
 
-	fd := int(os.Stdin.Fd()) //nolint:gosec // G115: Fd() returns uintptr; safe cast to int on all supported 64-bit platforms
+	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
 		return "", fmt.Errorf("%s is required (use --%s in non-interactive mode)", label, flagName)
 	}
