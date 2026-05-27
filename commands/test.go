@@ -254,7 +254,7 @@ func runTest(cmd *cobra.Command, testType string, extra map[string]any) error {
 		if output == "json" {
 			return printJSON(result)
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Use --follow to stream metrics, or run:\n  sukko test status --id %s\n", testID)
+		fmt.Fprintf(cmd.OutOrStdout(), "Use --follow (-f) to stream metrics in real-time. Test ID: %s\n", testID)
 		return nil
 	}
 
