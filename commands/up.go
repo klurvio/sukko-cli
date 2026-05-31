@@ -152,9 +152,11 @@ func buildComposeConfig(cfg ProjectConfig) (profiles []string, envOverrides map[
 	envOverrides["DATABASE_DRIVER"] = "postgres"
 	envOverrides["DATABASE_URL"] = composeDatabaseURL
 
-	if cfg.Broadcast == "valkey" {
+	if cfg.Broadcast == "nats" {
+		envOverrides["BROADCAST_TYPE"] = "nats"
+	} else {
+		// valkey is the default; start the container and wire its address
 		profiles = append(profiles, "valkey")
-		envOverrides["BROADCAST_TYPE"] = "valkey"
 		envOverrides["VALKEY_ADDRS"] = composeValkeyAddr
 	}
 

@@ -33,7 +33,7 @@ var devAdminToken = envOrDefault("SUKKO_DEV_ADMIN_TOKEN", "sukko-dev-token")
 var useDefaults bool
 
 func init() {
-	initCmd.Flags().BoolVar(&useDefaults, "defaults", false, "Skip prompts and use defaults (postgres + NATS + direct)")
+	initCmd.Flags().BoolVar(&useDefaults, "defaults", false, "Skip prompts and use defaults (postgres + valkey + direct)")
 	rootCmd.AddCommand(initCmd)
 }
 
@@ -91,14 +91,14 @@ func runInit(cmd *cobra.Command, _ []string) error {
 
 	cfg := ProjectConfig{
 		Database:          "postgres",
-		Broadcast:         "nats",
+		Broadcast:         "valkey",
 		MessageBackend:    "direct",
 		CredentialsEncKey: hex.EncodeToString(keyBytes),
 	}
 
 	if !useDefaults {
 		var err error
-		cfg.Broadcast, err = promptChoice(cmd, "Broadcast bus", []string{"nats", "valkey"}, "nats")
+		cfg.Broadcast, err = promptChoice(cmd, "Broadcast bus", []string{"valkey", "nats"}, "valkey")
 		if err != nil {
 			return err
 		}
