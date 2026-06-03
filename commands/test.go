@@ -10,6 +10,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"slices"
 	"net/url"
 	"os"
 	"strings"
@@ -198,13 +199,7 @@ func runTest(cmd *cobra.Command, testType string, extra map[string]any) error {
 	if testMessageBackend != "" {
 		tc := NewTesterClient(testerURL)
 		if caps, err := tc.Capabilities(ctx); err == nil {
-			supported := false
-			for _, b := range caps.Backends {
-				if b == testMessageBackend {
-					supported = true
-					break
-				}
-			}
+			supported := slices.Contains(caps.Backends, testMessageBackend)
 			if !supported {
 				return fmt.Errorf("unsupported message backend %q — tester supports: %s", testMessageBackend, strings.Join(caps.Backends, ", "))
 			}
