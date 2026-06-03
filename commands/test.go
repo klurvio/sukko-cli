@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net/http"
 	"net/url"
@@ -49,7 +50,7 @@ func init() {
 	for _, cmd := range []*cobra.Command{testSmokeCmd, testLoadCmd, testStressCmd, testSoakCmd, testValidateCmd} {
 		cmd.Flags().StringVar(&testTesterURL, "tester-url", "", "Tester service URL (overrides context)")
 		cmd.Flags().BoolVarP(&testFollow, "follow", "f", false, "Stream metrics in real-time")
-		cmd.Flags().StringVar(&testMessageBackend, "message-backend", "", "Publisher backend (direct, kafka, nats)")
+		cmd.Flags().StringVar(&testMessageBackend, "message-backend", "", "Publisher backend (direct, kafka)")
 		cmd.Flags().StringVar(&testTenantFlag, "tenant", "", "Tenant ID (uses active tenant from context if not set)")
 	}
 
@@ -164,20 +165,13 @@ func buildTestContext(messageBackend string) (map[string]any, error) {
 		"environment":      resolvedCtx.Environment,
 	}
 
-	// Message backend URLs (required for kafka/nats)
-	switch messageBackend {
-	case "kafka":
+	// Message backend URLs (required for kafka)
+	if messageBackend == "kafka" {
 		brokers := os.Getenv("KAFKA_BROKERS")
 		if brokers == "" {
 			return nil, errors.New("incomplete context: KAFKA_BROKERS env var is required when --message-backend=kafka")
 		}
 		ctx["message_backend_urls"] = brokers
-	case "nats":
-		natsURLs := os.Getenv("NATS_JETSTREAM_URLS")
-		if natsURLs == "" {
-			return nil, errors.New("incomplete context: NATS_JETSTREAM_URLS env var is required when --message-backend=nats")
-		}
-		ctx["message_backend_urls"] = natsURLs
 	}
 
 	return ctx, nil
@@ -187,6 +181,11 @@ func runTest(cmd *cobra.Command, testType string, extra map[string]any) error {
 	testerURL := resolveTesterURL(testTesterURL)
 	tok := resolveTesterToken()
 
+	ctx := context.Background()
+	if cmd != nil {
+		ctx = cmd.Context()
+	}
+
 	body := map[string]any{"type": testType}
 	maps.Copy(body, extra)
 
@@ -195,8 +194,21 @@ func runTest(cmd *cobra.Command, testType string, extra map[string]any) error {
 		body["tenant_id"] = tenant
 	}
 
-	// Message backend passthrough
+	// Message backend passthrough — validate against tester capabilities first
 	if testMessageBackend != "" {
+		tc := NewTesterClient(testerURL)
+		if caps, err := tc.Capabilities(ctx); err == nil {
+			supported := false
+			for _, b := range caps.Backends {
+				if b == testMessageBackend {
+					supported = true
+					break
+				}
+			}
+			if !supported {
+				return fmt.Errorf("unsupported message backend %q — tester supports: %s", testMessageBackend, strings.Join(caps.Backends, ", "))
+			}
+		}
 		body["message_backend"] = testMessageBackend
 	}
 
@@ -214,7 +226,7 @@ func runTest(cmd *cobra.Command, testType string, extra map[string]any) error {
 
 	client := &http.Client{Timeout: testHTTPTimeout}
 
-	req, err := http.NewRequestWithContext(cmd.Context(), http.MethodPost, testerURL+"/api/v1/tests", bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, testerURL+"/api/v1/tests", bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -248,13 +260,18 @@ func runTest(cmd *cobra.Command, testType string, extra map[string]any) error {
 	if testID == "" {
 		return errors.New("server response missing test ID")
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Test started: %s (type: %s)\n", testID, testType)
+
+	var out io.Writer = os.Stdout
+	if cmd != nil {
+		out = cmd.OutOrStdout()
+	}
+	fmt.Fprintf(out, "Test started: %s (type: %s)\n", testID, testType)
 
 	if !testFollow {
 		if output == "json" {
 			return printJSON(result)
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "Use --follow (-f) to stream metrics in real-time. Test ID: %s\n", testID)
+		fmt.Fprintf(out, "Use --follow (-f) to stream metrics in real-time. Test ID: %s\n", testID)
 		return nil
 	}
 
@@ -263,7 +280,15 @@ func runTest(cmd *cobra.Command, testType string, extra map[string]any) error {
 }
 
 func streamTestMetrics(cmd *cobra.Command, testerURL, testID, tok string) error {
-	req, err := http.NewRequestWithContext(cmd.Context(), http.MethodGet, testerURL+"/api/v1/tests/"+url.PathEscape(testID)+"/metrics", http.NoBody)
+	ctx := context.Background()
+	if cmd != nil {
+		ctx = cmd.Context()
+	}
+	var out io.Writer = os.Stdout
+	if cmd != nil {
+		out = cmd.OutOrStdout()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, testerURL+"/api/v1/tests/"+url.PathEscape(testID)+"/metrics", http.NoBody)
 	if err != nil {
 		return fmt.Errorf("create stream request: %w", err)
 	}
@@ -292,9 +317,9 @@ func streamTestMetrics(cmd *cobra.Command, testerURL, testID, tok string) error 
 				reportLine := scanner.Text()
 				reportData := strings.TrimPrefix(reportLine, "data: ")
 				if output == "json" {
-					fmt.Fprintln(cmd.OutOrStdout(), reportData)
+					fmt.Fprintln(out, reportData)
 				} else {
-					printTestReport(cmd, reportData)
+					printTestReport(out, reportData)
 				}
 			}
 			return nil
@@ -303,9 +328,9 @@ func streamTestMetrics(cmd *cobra.Command, testerURL, testID, tok string) error 
 		if after, ok := strings.CutPrefix(line, "data: "); ok {
 			metricsData := after
 			if output == "json" {
-				fmt.Fprintln(cmd.OutOrStdout(), metricsData)
+				fmt.Fprintln(out, metricsData)
 			} else {
-				printMetricsLine(cmd, metricsData)
+				printMetricsLine(out, metricsData)
 			}
 		}
 	}
@@ -316,7 +341,7 @@ func streamTestMetrics(cmd *cobra.Command, testerURL, testID, tok string) error 
 	return nil
 }
 
-func printMetricsLine(cmd *cobra.Command, data string) {
+func printMetricsLine(out io.Writer, data string) {
 	var m map[string]any
 	if err := json.Unmarshal([]byte(data), &m); err != nil {
 		return // best-effort display: malformed metrics line is non-fatal
@@ -328,30 +353,30 @@ func printMetricsLine(cmd *cobra.Command, data string) {
 	recv, _ := m["messages_received"].(float64)
 	errTotal, _ := m["errors_total"].(float64)
 
-	fmt.Fprintf(cmd.OutOrStdout(), "\r[%s] conns=%d sent=%d recv=%d errors=%d",
+	fmt.Fprintf(out, "\r[%s] conns=%d sent=%d recv=%d errors=%d",
 		elapsed, int(conns), int(sent), int(recv), int(errTotal))
 }
 
-func printTestReport(cmd *cobra.Command, data string) {
+func printTestReport(out io.Writer, data string) {
 	var report map[string]any
 	if err := json.Unmarshal([]byte(data), &report); err != nil {
-		fmt.Fprintln(cmd.OutOrStdout(), "\n"+data)
+		fmt.Fprintln(out, "\n"+data)
 		return
 	}
 
 	status, _ := report["status"].(string)
 	testType, _ := report["test_type"].(string)
 
-	fmt.Fprintf(cmd.OutOrStdout(), "\n\n=== Test Report: %s ===\n", testType)
+	fmt.Fprintf(out, "\n\n=== Test Report: %s ===\n", testType)
 
 	statusColor := colorGreen
 	if status != "pass" {
 		statusColor = colorRed
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Status: %s%s%s\n", statusColor, status, colorReset)
+	fmt.Fprintf(out, "Status: %s%s%s\n", statusColor, status, colorReset)
 
 	if checks, ok := report["checks"].([]any); ok && len(checks) > 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "\nChecks:")
+		fmt.Fprintln(out, "\nChecks:")
 		for _, c := range checks {
 			check, ok := c.(map[string]any)
 			if !ok {
@@ -363,35 +388,35 @@ func printTestReport(cmd *cobra.Command, data string) {
 			if checkStatus != "pass" {
 				indicator = colorRed + "FAIL" + colorReset
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "  [%s] %s", indicator, name)
+			fmt.Fprintf(out, "  [%s] %s", indicator, name)
 			if latency, ok := check["latency"].(string); ok && latency != "" {
-				fmt.Fprintf(cmd.OutOrStdout(), " (%s)", latency)
+				fmt.Fprintf(out, " (%s)", latency)
 			}
 			if errMsg, ok := check["error"].(string); ok && errMsg != "" {
-				fmt.Fprintf(cmd.OutOrStdout(), " — %s", errMsg)
+				fmt.Fprintf(out, " — %s", errMsg)
 			}
-			fmt.Fprintln(cmd.OutOrStdout())
+			fmt.Fprintln(out)
 		}
 	}
 
 	if metrics, ok := report["metrics"].(map[string]any); ok {
-		fmt.Fprintln(cmd.OutOrStdout(), "\nMetrics:")
+		fmt.Fprintln(out, "\nMetrics:")
 		connsActive, _ := metrics["connections_active"].(float64)
 		connsTotal, _ := metrics["connections_total"].(float64)
 		connsFailed, _ := metrics["connections_failed"].(float64)
 		sent, _ := metrics["messages_sent"].(float64)
 		recv, _ := metrics["messages_received"].(float64)
 		dropped, _ := metrics["messages_dropped"].(float64)
-		fmt.Fprintf(cmd.OutOrStdout(), "  Connections: %d active, %d total, %d failed\n",
+		fmt.Fprintf(out, "  Connections: %d active, %d total, %d failed\n",
 			int(connsActive), int(connsTotal), int(connsFailed))
-		fmt.Fprintf(cmd.OutOrStdout(), "  Messages: %d sent, %d received, %d dropped\n",
+		fmt.Fprintf(out, "  Messages: %d sent, %d received, %d dropped\n",
 			int(sent), int(recv), int(dropped))
 	}
 
 	if errs, ok := report["errors"].([]any); ok && len(errs) > 0 {
-		fmt.Fprintln(cmd.OutOrStdout(), "\nErrors:")
+		fmt.Fprintln(out, "\nErrors:")
 		for _, e := range errs {
-			fmt.Fprintf(cmd.OutOrStdout(), "  - %s\n", e)
+			fmt.Fprintf(out, "  - %s\n", e)
 		}
 	}
 }

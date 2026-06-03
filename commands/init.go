@@ -98,11 +98,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 
 	if !useDefaults {
 		var err error
-		cfg.Broadcast, err = promptChoice(cmd, "Broadcast bus", []string{"valkey", "nats"}, "valkey")
-		if err != nil {
-			return err
-		}
-		cfg.MessageBackend, err = promptChoice(cmd, "Message backend", []string{"direct", "kafka", "redpanda", "nats"}, "direct")
+		cfg.MessageBackend, err = promptChoice(cmd, "Message backend", []string{"direct", "kafka", "redpanda"}, "direct")
 		if err != nil {
 			return err
 		}

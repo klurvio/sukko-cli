@@ -21,23 +21,8 @@
 #
 # Optional infrastructure (activate via Docker Compose profiles):
 #   docker compose --profile kafka up         # Redpanda (Kafka)
-#   docker compose --profile nats up          # NATS (alternative broadcast bus)
-#   docker compose --profile kafka --profile nats up  # combine profiles
 
 services:
-  # ─── NATS (optional broadcast bus) — activate with: --profile nats ──
-  nats:
-    profiles: ["nats"]
-    image: nats:2.10-alpine
-    ports:
-      - "4222:4222"
-      - "8222:8222"
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 4222"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 5s
   # ─── Provisioning API ─────────────────────────────────────────────
   provisioning:
     image: ghcr.io/klurvio/sukko-provisioning:latest
@@ -71,7 +56,6 @@ services:
       - "3005:3005"
     environment:
       # Inter-service wiring (only overrides needed)
-      BROADCAST_TYPE: "${BROADCAST_TYPE:-valkey}"
       VALKEY_ADDRS: "valkey:6379"
       PROVISIONING_GRPC_ADDR: "provisioning:9090"
       SUKKO_LICENSE_KEY: "${SUKKO_LICENSE_KEY:-}"

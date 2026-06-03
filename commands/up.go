@@ -24,7 +24,6 @@ const (
 	composeValkeyAddr     = "valkey:6379"
 	composeKafkaBroker    = "kafka:9092"
 	composeRedpandaBroker = "redpanda:9092"
-	composeNATSURL        = "nats://nats:4222"
 )
 
 var pullImages bool
@@ -152,13 +151,10 @@ func buildComposeConfig(cfg ProjectConfig) (profiles []string, envOverrides map[
 	envOverrides["DATABASE_DRIVER"] = "postgres"
 	envOverrides["DATABASE_URL"] = composeDatabaseURL
 
-	if cfg.Broadcast == "nats" {
-		envOverrides["BROADCAST_TYPE"] = "nats"
-	} else {
-		// valkey is the default; start the container and wire its address
-		profiles = append(profiles, "valkey")
-		envOverrides["VALKEY_ADDRS"] = composeValkeyAddr
-	}
+	// Valkey is always the broadcast bus; wire its compose-internal address.
+	// When cfg.MessageBackend is empty (direct mode — the Go default), no MESSAGE_BACKEND
+	// env var is injected and the Go envDefault ("direct") takes effect natively.
+	envOverrides["VALKEY_ADDRS"] = composeValkeyAddr
 
 	switch cfg.MessageBackend {
 	case "kafka":
@@ -169,9 +165,6 @@ func buildComposeConfig(cfg ProjectConfig) (profiles []string, envOverrides map[
 		profiles = append(profiles, "redpanda")
 		envOverrides["MESSAGE_BACKEND"] = "kafka"
 		envOverrides["KAFKA_BROKERS"] = composeRedpandaBroker
-	case "nats":
-		envOverrides["MESSAGE_BACKEND"] = "nats"
-		envOverrides["NATS_JETSTREAM_URLS"] = composeNATSURL
 	}
 
 	if cfg.Observability {

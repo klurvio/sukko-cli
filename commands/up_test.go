@@ -17,12 +17,12 @@ func TestBuildComposeConfig_Observability(t *testing.T) {
 	}{
 		{
 			name:        "observability disabled — no profile or env vars",
-			cfg:         ProjectConfig{Database: "sqlite", Broadcast: "nats", MessageBackend: "direct"},
+			cfg:         ProjectConfig{Database: "sqlite", Broadcast: "valkey", MessageBackend: "direct"},
 			wantProfile: false,
 		},
 		{
 			name:        "observability enabled — adds profile",
-			cfg:         ProjectConfig{Database: "sqlite", Broadcast: "nats", MessageBackend: "direct", Observability: true},
+			cfg:         ProjectConfig{Database: "sqlite", Broadcast: "valkey", MessageBackend: "direct", Observability: true},
 			wantProfile: true,
 		},
 		{
