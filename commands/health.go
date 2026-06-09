@@ -65,7 +65,7 @@ per-component status with troubleshooting suggestions on failure.`,
 			{
 				name:    "ws-server",
 				url:     serverURL + "/health",
-				suggest: "Check ws-server. Is it running? Check NATS_URLS connectivity.",
+				suggest: "Check ws-server. Is it running? Check VALKEY_ADDRS connectivity.",
 			},
 			{
 				name:    "sukko-tester",

@@ -63,7 +63,7 @@ func TestLoadProjectConfig_Valid(t *testing.T) {
 
 	want := ProjectConfig{
 		Database:       "postgres",
-		Broadcast:      "nats",
+		Broadcast:      "valkey",
 		MessageBackend: "kafka",
 	}
 	data, err := json.Marshal(want)
@@ -90,7 +90,7 @@ func TestProjectConfig_BackwardCompat(t *testing.T) {
 	t.Parallel()
 
 	// Existing config without observability fields should unmarshal to false
-	oldJSON := `{"database":"sqlite","broadcast":"nats","message_backend":"direct"}`
+	oldJSON := `{"database":"sqlite","broadcast":"valkey","message_backend":"direct"}`
 
 	var cfg ProjectConfig
 	if err := json.Unmarshal([]byte(oldJSON), &cfg); err != nil {
@@ -116,7 +116,7 @@ func TestProjectConfig_Roundtrip(t *testing.T) {
 
 	cfg := ProjectConfig{
 		Database:       "postgres",
-		Broadcast:      "nats",
+		Broadcast:      "valkey",
 		MessageBackend: "kafka",
 		Observability:  true,
 		Tracing:        true,
@@ -144,7 +144,7 @@ func TestProjectConfig_OmitEmpty(t *testing.T) {
 	// When observability fields are false, omitempty should omit them
 	cfg := ProjectConfig{
 		Database:       "sqlite",
-		Broadcast:      "nats",
+		Broadcast:      "valkey",
 		MessageBackend: "direct",
 	}
 

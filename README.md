@@ -168,7 +168,7 @@ sukko context create production \
 # Interactive setup (prompts for each choice)
 sukko init
 
-# Skip prompts and use defaults (SQLite + NATS + direct)
+# Skip prompts and use defaults (postgres + Valkey + direct)
 sukko init --defaults
 ```
 
@@ -176,8 +176,8 @@ Infrastructure choices:
 
 | Component | Options | Default |
 |-----------|---------|---------|
-| Broadcast bus | `nats`, `valkey` | `nats` |
-| Message backend | `direct`, `kafka`, `redpanda`, `nats` | `direct` |
+| Broadcast bus | `valkey` | `valkey` |
+| Message backend | `direct`, `kafka`, `redpanda` | `direct` |
 | Observability | `yes`, `no` | `no` |
 | Distributed tracing | `yes`, `no` | `yes` (if observability enabled) |
 | Continuous profiling | `yes`, `no` | `yes` (if observability enabled) |
@@ -330,7 +330,7 @@ sukko token revoke --jti <id> --tenant acme --expires 2h
 
 ### Routing Rules
 
-Control how messages are routed to Kafka/NATS topics.
+Control how messages are routed to Kafka topics.
 
 ```bash
 # Get routing rules
@@ -506,7 +506,7 @@ sukko edition compare
 | Shards | 1 | 8 | Unlimited |
 | Topics/Tenant | 10 | 50 | Unlimited |
 | Routing Rules/Tenant | 10 | 100 | Unlimited |
-| Message Backend | direct | +kafka/nats | All |
+| Message Backend | direct | +kafka | All |
 | Per-Tenant Isolation | - | Yes | Yes |
 | Alerting | - | Yes | Yes |
 | SSE Transport | - | Yes | Yes |
@@ -544,7 +544,7 @@ sukko license push <enterprise-key>
 sukko license push <pro-key>
 ```
 
-**Requirements**: Push-service requires `kafka` or `redpanda` message backend. If your backend is `direct` or `nats`, run `sukko init` to reconfigure before upgrading.
+**Requirements**: Push-service requires `kafka` or `redpanda` message backend. If your backend is `direct`, run `sukko init` to reconfigure before upgrading.
 
 **Fresh start**: If `SUKKO_LICENSE_KEY` is set to an Enterprise key, `sukko up` automatically starts push-service alongside core services.
 

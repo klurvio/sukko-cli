@@ -288,7 +288,7 @@ var editionMatrix = []struct {
 	{"Topics/Tenant", "10", "50", "Unlimited"},
 	{"Routing Rules/Tenant", "10", "100", "Unlimited"},
 	{"", "", "", ""},
-	{"Message Backend", "direct", "+ kafka/nats", "All"},
+	{"Message Backend", "direct", "+ kafka", "All"},
 	{"Database", "sqlite", "+ postgres", "All"},
 	{"Per-Tenant Isolation", "No", "Yes", "Yes"},
 	{"Alerting", "No", "Yes", "Yes"},
@@ -363,7 +363,7 @@ func comparisonData() map[string]any {
 					"topics_per_tenant": 50, "routing_rules_per_tenant": 100,
 				},
 				"features": map[string]any{
-					"message_backend": "direct, kafka, nats", "database": "sqlite, postgres",
+					"message_backend": "direct, kafka", "database": "sqlite, postgres",
 					"per_tenant_isolation": true, "alerting": true,
 					"sse_transport": true, "web_push": false,
 					"audit_logging": false, "admin_ui_sso": false,
