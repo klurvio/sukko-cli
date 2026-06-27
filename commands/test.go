@@ -27,6 +27,7 @@ var (
 	testPublishRate    int
 	testRampRate       int
 	testSuite          string
+	testLoadSuite      string // --suite for stress/soak (empty = default suite)
 	testTesterURL      string
 	testFollow         bool
 	testMessageBackend string
@@ -45,6 +46,10 @@ func init() {
 	}
 
 	testValidateCmd.Flags().StringVar(&testSuite, "suite", "auth", "Validation suite (fetch available suites from tester via --help)")
+	for _, cmd := range []*cobra.Command{testStressCmd, testSoakCmd} {
+		cmd.Flags().StringVar(&testLoadSuite, "suite", "", "Load suite to run (e.g. revocation); omit for default")
+		_ = cmd.RegisterFlagCompletionFunc("suite", completeSuites)
+	}
 	_ = testValidateCmd.RegisterFlagCompletionFunc("suite", completeSuites)
 
 	// Flags on all subcommands
@@ -89,12 +94,16 @@ var testStressCmd = &cobra.Command{
 	Use:   "stress",
 	Short: "Push to maximum capacity and find limits",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		return runTest(cmd, "stress", map[string]any{
+		body := map[string]any{
 			"connections":  testConnections,
 			"duration":     testDuration,
 			"publish_rate": testPublishRate,
 			"ramp_rate":    testRampRate,
-		})
+		}
+		if testLoadSuite != "" {
+			body["suite"] = testLoadSuite
+		}
+		return runTest(cmd, "stress", body)
 	},
 }
 
@@ -102,11 +111,15 @@ var testSoakCmd = &cobra.Command{
 	Use:   "soak",
 	Short: "Long-running stability test",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		return runTest(cmd, "soak", map[string]any{
+		body := map[string]any{
 			"connections":  testConnections,
 			"duration":     testDuration,
 			"publish_rate": testPublishRate,
-		})
+		}
+		if testLoadSuite != "" {
+			body["suite"] = testLoadSuite
+		}
+		return runTest(cmd, "soak", body)
 	},
 }
 
