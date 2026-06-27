@@ -419,7 +419,7 @@ func promptSecret(cmd *cobra.Command, label, flagName, flagVal string) (string, 
 		return flagVal, nil
 	}
 
-	fd := int(os.Stdin.Fd()) //nolint:gosec // G115: file descriptor values fit in int on all supported platforms; os.File.Fd() never returns a value that overflows int
+	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
 		return "", fmt.Errorf("%s is required (use --%s in non-interactive mode)", label, flagName)
 	}
