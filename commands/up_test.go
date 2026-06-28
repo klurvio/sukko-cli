@@ -2,6 +2,7 @@ package commands
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -40,6 +41,17 @@ func TestDefaultCatchAllRules(t *testing.T) {
 	// Assert topic_suffix is NOT present (old format must not appear).
 	if _, ok := rule["topic_suffix"]; ok {
 		t.Error("rule must not contain 'topic_suffix' key (stale format)")
+	}
+}
+
+func TestValidateProjectConfig_NATSBroadcast(t *testing.T) {
+	t.Parallel()
+	err := validateProjectConfig(ProjectConfig{Broadcast: "nats"})
+	if err == nil {
+		t.Fatal("expected error for broadcast=nats, got nil")
+	}
+	if !strings.Contains(err.Error(), "nats") {
+		t.Errorf("error %q missing 'nats' context", err.Error())
 	}
 }
 

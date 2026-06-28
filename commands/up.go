@@ -57,6 +57,10 @@ func runUp(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("parse config: %w", err)
 	}
 
+	if err := validateProjectConfig(cfg); err != nil {
+		return err
+	}
+
 	// Verify credentials are available before starting services
 	if resolvedCtx == nil {
 		return errors.New("no active context found — run 'sukko init' first")
@@ -140,6 +144,14 @@ func runUp(cmd *cobra.Command, _ []string) error {
 		fmt.Fprintln(cmd.OutOrStdout(), "  AlertManager: http://localhost:9093")
 	}
 
+	return nil
+}
+
+// validateProjectConfig rejects stale project config values that are no longer supported.
+func validateProjectConfig(cfg ProjectConfig) error {
+	if cfg.Broadcast == "nats" {
+		return errors.New(`broadcast "nats" is no longer supported: update .sukko/config.json to remove the broadcast field or set it to "valkey"`)
+	}
 	return nil
 }
 
