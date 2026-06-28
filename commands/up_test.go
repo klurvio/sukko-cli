@@ -33,9 +33,17 @@ func TestDefaultCatchAllRules(t *testing.T) {
 		t.Errorf("topics = %v, want [\"default\"]", topicsRaw)
 	}
 
-	// Assert priority is present.
-	if _, ok := rule["priority"]; !ok {
+	// Assert priority is present and correct.
+	priorityRaw, ok := rule["priority"]
+	if !ok {
 		t.Error("rule missing 'priority' key")
+	} else if priorityRaw != 100 {
+		t.Errorf("rule priority = %v, want 100", priorityRaw)
+	}
+
+	// Assert pattern is present and correct.
+	if rule["pattern"] != "**" {
+		t.Errorf("rule pattern = %v, want \"**\"", rule["pattern"])
 	}
 
 	// Assert topic_suffix is NOT present (old format must not appear).
