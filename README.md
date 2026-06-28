@@ -343,13 +343,13 @@ sukko rules routing set --tenant acme --file routing.json
 sukko rules routing delete --tenant acme
 ```
 
-Example `routing.json`:
+Example `routing.json` (rules are evaluated in ascending priority order — lower value matches first):
 
 ```json
 {
   "rules": [
-    {"pattern": "*.*", "topic_suffix": "default"},
-    {"pattern": "orders.*", "topic_suffix": "orders"}
+    {"pattern": "orders.**", "topics": ["orders"], "priority": 50},
+    {"pattern": "**",        "topics": ["default"], "priority": 100}
   ]
 }
 ```
