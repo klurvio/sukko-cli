@@ -32,7 +32,7 @@ func init() {
 }
 
 func isTTY() bool {
-	return term.IsTerminal(int(os.Stdout.Fd()))
+	return term.IsTerminal(int(os.Stdout.Fd())) //nolint:gosec // G115: os.Stdout.Fd() returns stdout fd (1); file descriptor values are bounded by OPEN_MAX and always fit in int.
 }
 
 // defaultWriter returns os.Stdout. Used as the default output target for print helpers.

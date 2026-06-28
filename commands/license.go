@@ -36,18 +36,18 @@ type licenseClaims struct {
 // segment (payload), and unmarshals the JSON claims. It does NOT verify the
 // Ed25519 signature — the CLI doesn't have the public key.
 func decodeLicenseClaims(key string) (*licenseClaims, error) {
-	parts := strings.SplitN(key, ".", 2)
-	if len(parts) != 2 {
+	payloadSeg, sigSeg, ok := strings.Cut(key, ".")
+	if !ok {
 		return nil, errors.New("invalid license key format: expected payload.signature")
 	}
 
-	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	payload, err := base64.RawURLEncoding.DecodeString(payloadSeg)
 	if err != nil {
 		return nil, fmt.Errorf("decode license payload: %w", err)
 	}
 
 	// Validate signature segment is decodable (format check only)
-	if _, err := base64.RawURLEncoding.DecodeString(parts[1]); err != nil {
+	if _, err := base64.RawURLEncoding.DecodeString(sigSeg); err != nil {
 		return nil, fmt.Errorf("decode license signature: %w", err)
 	}
 
