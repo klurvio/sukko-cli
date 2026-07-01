@@ -212,3 +212,59 @@ func TestRunTest_SupportedBackendPassesCapabilities(t *testing.T) {
 		t.Errorf("unexpected error for supported backend kafka: %v", err)
 	}
 }
+
+// TestRunTest_HintTextNoStatusCommand verifies that when --follow is false the
+// hint line printed to cmd.OutOrStdout() contains "--follow" and does NOT contain
+// "status --id". Regression guard: the old hint referenced a non-existent
+// `sukko test status --id` command.
+func TestRunTest_HintTextNoStatusCommand(t *testing.T) {
+	// No t.Parallel() — modifies package-level flag vars.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/tests" {
+			t.Errorf("unexpected request to %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id":     "t1",
+			"status": "running",
+			"config": map[string]any{},
+		})
+	}))
+	defer srv.Close()
+
+	origURL := testTesterURL
+	testTesterURL = srv.URL
+	defer func() { testTesterURL = origURL }()
+
+	origBackend := testMessageBackend
+	testMessageBackend = "" // skip capabilities check
+	defer func() { testMessageBackend = origBackend }()
+
+	origFollow := testFollow
+	testFollow = false
+	defer func() { testFollow = origFollow }()
+
+	origOutput := output
+	output = "" // ensure text path, not json
+	defer func() { output = origOutput }()
+
+	cmd := &cobra.Command{}
+	cmd.SetContext(context.Background())
+	var buf strings.Builder
+	cmd.SetOut(&buf)
+
+	if err := runTest(cmd, "smoke", nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := buf.String()
+	if !strings.Contains(got, "--follow") {
+		t.Errorf("hint text missing '--follow': %q", got)
+	}
+	if strings.Contains(got, "status --id") {
+		t.Errorf("hint text must not reference 'status --id': %q", got)
+	}
+}
