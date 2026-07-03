@@ -19,8 +19,8 @@ func TestTesterClient_Capabilities_Success(t *testing.T) {
 		Suites: []TesterSuite{
 			{Name: "auth", Description: "Auth validation"},
 			{Name: "pubsub", Description: "Pub-sub validation"},
+			{Name: "kafka-ingest", Description: "Direct-to-Kafka ingestion"},
 		},
-		Backends: []string{"direct", "kafka"},
 		ContextFields: []TesterContextField{
 			{Name: "gateway_url", Type: "string", Required: true, Description: "Gateway URL"},
 		},
@@ -38,14 +38,11 @@ func TestTesterClient_Capabilities_Success(t *testing.T) {
 		t.Fatalf("Capabilities(): %v", err)
 	}
 
-	if len(got.Suites) != 2 {
-		t.Errorf("suites = %d, want 2", len(got.Suites))
+	if len(got.Suites) != 3 {
+		t.Errorf("suites = %d, want 3", len(got.Suites))
 	}
 	if got.Suites[0].Name != "auth" {
 		t.Errorf("suites[0].name = %q, want %q", got.Suites[0].Name, "auth")
-	}
-	if len(got.Backends) != 2 {
-		t.Errorf("backends = %d, want 2", len(got.Backends))
 	}
 }
 

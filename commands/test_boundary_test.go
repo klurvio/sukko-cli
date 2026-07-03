@@ -56,7 +56,7 @@ func TestBuildTestContext(t *testing.T) {
 		name           string
 		ctx            *clicontext.Context
 		store          *clicontext.Store
-		messageBackend string
+		kafkaBrokers   string
 		wantNil        bool
 		wantErr        bool
 		wantErrContain string
@@ -90,7 +90,7 @@ func TestBuildTestContext(t *testing.T) {
 				resolvedStore = origStore
 			}()
 
-			result, err := buildTestContext(tt.messageBackend)
+			result, err := buildTestContext(tt.kafkaBrokers)
 
 			if tt.wantErr {
 				if err == nil {
@@ -114,4 +114,52 @@ func TestBuildTestContext(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBuildTestContext_KafkaBrokers verifies the per-run --kafka-brokers override
+// is threaded into the context as kafka_brokers (for the kafka-ingest suite), and
+// omitted when the flag is empty. Credentials are never included.
+func TestBuildTestContext_KafkaBrokers(t *testing.T) {
+	// No t.Parallel() — mutates package-level resolvedCtx/resolvedStore.
+	store, err := clicontext.NewStoreWithDir(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewStoreWithDir: %v", err)
+	}
+
+	origCtx, origStore := resolvedCtx, resolvedStore
+	resolvedCtx = &clicontext.Context{
+		Name:            "remote",
+		Type:            "remote",
+		GatewayURL:      "wss://gw.example.com:3000",
+		ProvisioningURL: "https://prov.example.com:8080",
+		Environment:     "prod",
+	}
+	resolvedStore = store
+	defer func() { resolvedCtx, resolvedStore = origCtx, origStore }()
+
+	t.Run("override present", func(t *testing.T) {
+		ctx, err := buildTestContext("broker1:9092,broker2:9092")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ctx == nil {
+			t.Fatal("expected non-nil context")
+		}
+		if got := ctx["kafka_brokers"]; got != "broker1:9092,broker2:9092" {
+			t.Errorf("kafka_brokers = %v, want %q", got, "broker1:9092,broker2:9092")
+		}
+		if _, ok := ctx["message_backend_urls"]; ok {
+			t.Error("retired message_backend_urls must not be present")
+		}
+	})
+
+	t.Run("override empty omits field", func(t *testing.T) {
+		ctx, err := buildTestContext("")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if _, ok := ctx["kafka_brokers"]; ok {
+			t.Error("kafka_brokers must be absent when the flag is empty")
+		}
+	})
 }
