@@ -143,3 +143,90 @@ func TestBuildComposeConfig_Observability(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildComposeConfig_MessageBackend(t *testing.T) {
+	tests := []struct {
+		name        string
+		backend     string
+		wantProfile bool // "kafka" profile present
+		wantEnv     bool // MESSAGE_BACKEND/KAFKA_BROKERS overrides present
+	}{
+		{"default empty stays direct", "", false, false},
+		{"explicit direct", "direct", false, false},
+		{"kafka", "kafka", true, true},
+		{"redpanda maps to kafka profile+broker", "redpanda", true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			profiles, env := buildComposeConfig(ProjectConfig{Database: "sqlite", Broadcast: "valkey", MessageBackend: tt.backend})
+			hasKafka := slices.Contains(profiles, "kafka")
+			if hasKafka != tt.wantProfile {
+				t.Errorf("kafka profile = %v, want %v (profiles=%v)", hasKafka, tt.wantProfile, profiles)
+			}
+			if slices.Contains(profiles, "redpanda") {
+				t.Errorf("no service declares a %q profile; got %v", "redpanda", profiles)
+			}
+			if tt.wantEnv {
+				if env["MESSAGE_BACKEND"] != "kafka" {
+					t.Errorf("MESSAGE_BACKEND = %q, want kafka", env["MESSAGE_BACKEND"])
+				}
+				if env["KAFKA_BROKERS"] != "redpanda:9092" {
+					t.Errorf("KAFKA_BROKERS = %q, want redpanda:9092", env["KAFKA_BROKERS"])
+				}
+			} else {
+				if _, ok := env["MESSAGE_BACKEND"]; ok {
+					t.Errorf("MESSAGE_BACKEND override present for backend %q; want none (Go default direct)", tt.backend)
+				}
+			}
+		})
+	}
+}
+
+func TestRequireLicenseForKafka(t *testing.T) {
+	tests := []struct {
+		name       string
+		backend    string
+		licenseKey string
+		wantErr    bool
+	}{
+		{"direct needs no license", "direct", "", false},
+		{"empty backend needs no license", "", "", false},
+		{"kafka without license errors", "kafka", "", true},
+		{"redpanda without license errors", "redpanda", "", true},
+		{"kafka with license ok", "kafka", "some-token", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := requireLicenseForKafka(tt.backend, tt.licenseKey)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("requireLicenseForKafka(%q, present=%v) err = %v, wantErr %v", tt.backend, tt.licenseKey != "", err, tt.wantErr)
+			}
+			if tt.wantErr && err != nil && !strings.Contains(err.Error(), "Pro/Enterprise license") {
+				t.Errorf("error %q should mention the license requirement", err.Error())
+			}
+		})
+	}
+}
+
+func TestResolveEffectiveLicenseKey(t *testing.T) {
+	// Not parallel: mutates the process-wide SUKKO_LICENSE_KEY env var via t.Setenv.
+	tests := []struct {
+		name    string
+		envOver map[string]string
+		shell   string // shell-exported SUKKO_LICENSE_KEY ("" = unset)
+		want    string
+	}{
+		{"neither set", map[string]string{}, "", ""},
+		{"context-store only", map[string]string{"SUKKO_LICENSE_KEY": "ctx-token"}, "", "ctx-token"},
+		{"shell env only (regression: must be honored)", map[string]string{}, "shell-token", "shell-token"},
+		{"context store wins over shell", map[string]string{"SUKKO_LICENSE_KEY": "ctx-token"}, "shell-token", "ctx-token"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("SUKKO_LICENSE_KEY", tt.shell)
+			if got := resolveEffectiveLicenseKey(tt.envOver); got != tt.want {
+				t.Errorf("resolveEffectiveLicenseKey(%v) with shell=%q = %q, want %q", tt.envOver, tt.shell, got, tt.want)
+			}
+		})
+	}
+}

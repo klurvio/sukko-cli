@@ -22,9 +22,21 @@ const healthTimeout = 120 * time.Second
 const (
 	composeDatabaseURL    = "postgres://sukko:sukko@postgres:5432/sukko_provisioning?sslmode=disable" //nolint:gosec // G101: not a credential — Docker Compose internal connection string with well-known dev defaults
 	composeValkeyAddr     = "valkey:6379"
-	composeKafkaBroker    = "kafka:9092"
 	composeRedpandaBroker = "redpanda:9092"
 )
+
+// Message backend selectors accepted in project config (sukko init). Both "kafka" and
+// "redpanda" select the local Redpanda broker (Kafka-wire-compatible); see isKafkaFamilyBackend.
+const (
+	backendKafka    = "kafka"
+	backendRedpanda = "redpanda"
+)
+
+// isKafkaFamilyBackend reports whether the message backend selects the Kafka/Redpanda
+// broker (as opposed to the default "direct" backend). Both aliases are Pro/Enterprise-gated.
+func isKafkaFamilyBackend(backend string) bool {
+	return backend == backendKafka || backend == backendRedpanda
+}
 
 var pullImages bool
 
@@ -91,6 +103,16 @@ func runUp(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
+	// Kafka mode is Pro/Enterprise-gated — ws-server rejects MESSAGE_BACKEND=kafka on
+	// Community at startup. Fail fast with a clear message instead of a container
+	// crash-loop on a deep FeatureError. The server startup gate remains authoritative.
+	//
+	// The check must mirror what compose's ${SUKKO_LICENSE_KEY:-} interpolation actually
+	// resolves (see resolveEffectiveLicenseKey).
+	if err := requireLicenseForKafka(cfg.MessageBackend, resolveEffectiveLicenseKey(envOverrides)); err != nil {
+		return err
+	}
+
 	fmt.Fprintf(cmd.OutOrStdout(), "Starting Sukko (postgres + %s + %s)...\n",
 		cfg.Broadcast, cfg.MessageBackend)
 
@@ -147,6 +169,30 @@ func runUp(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
+// requireLicenseForKafka returns an error when a kafka-family message backend is selected
+// without a configured license key. Kafka mode is Pro/Enterprise-gated (ws-server rejects it
+// at startup), so this gives a clear operator-facing failure before `compose up` rather than a
+// container crash-loop. The server startup gate remains the authoritative enforcement point.
+func requireLicenseForKafka(backend, licenseKey string) error {
+	if isKafkaFamilyBackend(backend) && licenseKey == "" {
+		return fmt.Errorf("message backend %q requires a Pro/Enterprise license, but none is configured — set one with 'sukko license set <token>' or switch to direct mode", backend)
+	}
+	return nil
+}
+
+// resolveEffectiveLicenseKey returns the license key that compose's ${SUKKO_LICENSE_KEY:-}
+// interpolation will actually see: the context-store key (already placed in envOverrides) takes
+// precedence, falling back to a shell-exported SUKKO_LICENSE_KEY (inherited by the compose
+// subprocess via os.Environ() in compose.Manager.Up). Keeping this in sync with the real
+// resolution prevents requireLicenseForKafka from false-positiving on the documented
+// `export SUKKO_LICENSE_KEY` workflow.
+func resolveEffectiveLicenseKey(envOverrides map[string]string) string {
+	if lk := envOverrides["SUKKO_LICENSE_KEY"]; lk != "" {
+		return lk
+	}
+	return os.Getenv("SUKKO_LICENSE_KEY")
+}
+
 // validateProjectConfig rejects stale project config values that are no longer supported.
 func validateProjectConfig(cfg ProjectConfig) error {
 	if cfg.Broadcast == "nats" {
@@ -168,13 +214,13 @@ func buildComposeConfig(cfg ProjectConfig) (profiles []string, envOverrides map[
 	// env var is injected and the Go envDefault ("direct") takes effect natively.
 	envOverrides["VALKEY_ADDRS"] = composeValkeyAddr
 
+	// Kafka mode: "kafka" and "redpanda" both select the local Redpanda broker
+	// (Kafka-wire-compatible) under the "kafka" compose profile — the only profile the
+	// redpanda service declares. (Previously "kafka" wired the nonexistent host kafka:9092
+	// and "redpanda" appended a "redpanda" profile no service defines — both broken.)
 	switch cfg.MessageBackend {
-	case "kafka":
+	case backendKafka, backendRedpanda:
 		profiles = append(profiles, "kafka")
-		envOverrides["MESSAGE_BACKEND"] = "kafka"
-		envOverrides["KAFKA_BROKERS"] = composeKafkaBroker
-	case "redpanda":
-		profiles = append(profiles, "redpanda")
 		envOverrides["MESSAGE_BACKEND"] = "kafka"
 		envOverrides["KAFKA_BROKERS"] = composeRedpandaBroker
 	}
@@ -299,7 +345,7 @@ func reconcilePushService(cmd *cobra.Command, mgr *compose.Manager, cfg ProjectC
 	}
 
 	edition := resp.Edition
-	compatibleBackend := cfg.MessageBackend == "kafka" || cfg.MessageBackend == "redpanda"
+	compatibleBackend := isKafkaFamilyBackend(cfg.MessageBackend)
 
 	if edition == "enterprise" && compatibleBackend {
 		if !pushServiceHealthy(cmd.Context(), mgr) {
