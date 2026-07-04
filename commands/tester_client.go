@@ -13,7 +13,6 @@ import (
 type TesterCapabilities struct {
 	TestTypes     []TesterTestType     `json:"test_types"`
 	Suites        []TesterSuite        `json:"suites"`
-	Backends      []string             `json:"backends"`
 	ContextFields []TesterContextField `json:"context_fields"`
 }
 

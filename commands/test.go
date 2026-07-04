@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
@@ -22,16 +21,16 @@ import (
 const testHTTPTimeout = 30 * time.Second
 
 var (
-	testConnections    int
-	testDuration       string
-	testPublishRate    int
-	testRampRate       int
-	testSuite          string
-	testLoadSuite      string // --suite for stress/soak (empty = default suite)
-	testTesterURL      string
-	testFollow         bool
-	testMessageBackend string
-	testTenantFlag     string
+	testConnections  int
+	testDuration     string
+	testPublishRate  int
+	testRampRate     int
+	testSuite        string
+	testLoadSuite    string // --suite for stress/soak (empty = default suite)
+	testTesterURL    string
+	testFollow       bool
+	testKafkaBrokers string
+	testTenantFlag   string
 )
 
 func init() {
@@ -56,7 +55,7 @@ func init() {
 	for _, cmd := range []*cobra.Command{testSmokeCmd, testLoadCmd, testStressCmd, testSoakCmd, testValidateCmd} {
 		cmd.Flags().StringVar(&testTesterURL, "tester-url", "", "Tester service URL (overrides context)")
 		cmd.Flags().BoolVarP(&testFollow, "follow", "f", false, "Stream metrics in real-time")
-		cmd.Flags().StringVar(&testMessageBackend, "message-backend", "", "Publisher backend (direct, kafka)")
+		cmd.Flags().StringVar(&testKafkaBrokers, "kafka-brokers", "", "Per-run Kafka broker override for the kafka-ingest suite (comma-separated); credentials come from the tester's environment")
 		cmd.Flags().StringVar(&testTenantFlag, "tenant", "", "Tenant ID (uses active tenant from context if not set)")
 	}
 
@@ -153,7 +152,7 @@ func isLocalContext() bool {
 
 // buildTestContext assembles the context block for the tester API.
 // Returns nil if context should not be sent (local dev or incomplete).
-func buildTestContext(messageBackend string) (map[string]any, error) {
+func buildTestContext(kafkaBrokers string) (map[string]any, error) {
 	if resolvedCtx == nil || resolvedStore == nil {
 		return nil, nil // no context available — tester uses own env vars
 	}
@@ -179,13 +178,10 @@ func buildTestContext(messageBackend string) (map[string]any, error) {
 		"environment":      resolvedCtx.Environment,
 	}
 
-	// Message backend URLs (required for kafka)
-	if messageBackend == "kafka" {
-		brokers := os.Getenv("KAFKA_BROKERS")
-		if brokers == "" {
-			return nil, errors.New("incomplete context: KAFKA_BROKERS env var is required when --message-backend=kafka")
-		}
-		ctx["message_backend_urls"] = brokers
+	// Optional per-run Kafka broker override for the kafka-ingest suite. Credentials
+	// (SASL/TLS) are never sent by the CLI — they live in the tester's environment.
+	if kafkaBrokers != "" {
+		ctx["kafka_brokers"] = kafkaBrokers
 	}
 
 	return ctx, nil
@@ -208,20 +204,8 @@ func runTest(cmd *cobra.Command, testType string, extra map[string]any) error {
 		body["tenant_id"] = tenant
 	}
 
-	// Message backend passthrough — validate against tester capabilities first
-	if testMessageBackend != "" {
-		tc := NewTesterClient(testerURL)
-		if caps, err := tc.Capabilities(ctx); err == nil {
-			supported := slices.Contains(caps.Backends, testMessageBackend)
-			if !supported {
-				return fmt.Errorf("unsupported message backend %q — tester supports: %s", testMessageBackend, strings.Join(caps.Backends, ", "))
-			}
-		}
-		body["message_backend"] = testMessageBackend
-	}
-
 	// Context passthrough (remote only)
-	if testCtx, err := buildTestContext(testMessageBackend); err != nil {
+	if testCtx, err := buildTestContext(testKafkaBrokers); err != nil {
 		return fmt.Errorf("build test context: %w", err)
 	} else if testCtx != nil {
 		body["context"] = testCtx
