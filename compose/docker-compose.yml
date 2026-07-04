@@ -151,6 +151,10 @@ services:
       GATEWAY_URL: "ws://ws-gateway:3000"
       PROVISIONING_URL: "http://provisioning:8080"
       TESTER_AUTH_TOKEN: "sukko-dev-token"
+      # KAFKA_BROKERS intentionally unset: this compose runs ws-server in direct
+      # mode (Community), so the kafka-ingest suite correctly SKIPS here. Running
+      # kafka-ingest requires a Pro/Enterprise kafka-backend server — provided by
+      # the dedicated e2e harness, not the operator quick-start compose.
       # Webhook delivery base URL — the address webhook-worker uses to POST deliveries back
       # to this tester pod. Only relevant when running with --profile pro (webhook-worker).
       TESTER_WEBHOOK_BASE_URL: "http://sukko-tester:8090"
@@ -186,6 +190,8 @@ services:
       PYROSCOPE_ADDR: "http://pyroscope:4040"
     depends_on:
       provisioning:
+        condition: service_healthy
+      valkey:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8083/health"]
@@ -322,6 +328,14 @@ configs:
         - job_name: provisioning
           static_configs:
             - targets: ['provisioning:8080']
+          metrics_path: /metrics
+        # webhook-worker is profile "pro"; prometheus is profile "observability" — no shared
+        # profile. When running --profile observability without --profile pro, this target
+        # appears DOWN in the Prometheus UI. The ServiceDown alert excludes webhook-worker
+        # (it filters on job=~"ws-server|ws-gateway|provisioning"), so no false alert fires.
+        - job_name: webhook-worker
+          static_configs:
+            - targets: ['webhook-worker:8083']
           metrics_path: /metrics
         - job_name: prometheus
           static_configs:
