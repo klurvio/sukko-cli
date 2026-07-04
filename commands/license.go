@@ -318,7 +318,7 @@ func runLicensePush(cmd *cobra.Command, args []string) error {
 		if projCfg == nil {
 			return errors.New("project config not found — run 'sukko init' first")
 		}
-		if projCfg.MessageBackend != "kafka" && projCfg.MessageBackend != "redpanda" {
+		if !isKafkaFamilyBackend(projCfg.MessageBackend) {
 			return fmt.Errorf("enterprise push requires kafka or redpanda message backend (current: %s) — run 'sukko init' to reconfigure, then 'sukko up' again", projCfg.MessageBackend)
 		}
 	}
