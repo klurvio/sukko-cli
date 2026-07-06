@@ -230,3 +230,34 @@ func TestResolveEffectiveLicenseKey(t *testing.T) {
 		})
 	}
 }
+
+// TestDefaultChannelRules asserts the seeded channel-rules body matches the
+// provisioning SetChannelRulesRequest schema exactly. Regression guard: the
+// previous body used the unknown key "public_patterns", which the API decoder
+// silently dropped — saving EMPTY rules and leaving the demo tenant deny-all
+// under provisioning-only channel authorization.
+func TestDefaultChannelRules(t *testing.T) {
+	t.Parallel()
+
+	body := defaultChannelRules()
+
+	for _, key := range []string{"public", "default", "publish_public"} {
+		raw, ok := body[key]
+		if !ok {
+			t.Fatalf("defaultChannelRules: missing %q key", key)
+		}
+		patterns, ok := raw.([]string)
+		if !ok || len(patterns) != 1 || patterns[0] != "*" {
+			t.Errorf("defaultChannelRules[%q] = %v, want [\"*\"]", key, raw)
+		}
+	}
+
+	// Regression: the old wrong key must never reappear — the API ignores
+	// unknown fields, so it would silently seed a deny-all tenant again.
+	if _, present := body["public_patterns"]; present {
+		t.Error("defaultChannelRules must not use the unknown \"public_patterns\" key")
+	}
+	if len(body) != 3 {
+		t.Errorf("defaultChannelRules has %d keys, want exactly 3 (public, default, publish_public): %v", len(body), body)
+	}
+}

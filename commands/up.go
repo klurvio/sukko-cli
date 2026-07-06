@@ -267,17 +267,31 @@ func provisionDefaultTenant(cmd *cobra.Command) error {
 		fmt.Fprintln(cmd.OutOrStdout(), "  Routing rules: set (catch-all)")
 	}
 
-	// Set all-public channel rules
-	_, err = c.SetChannelRules(ctx, "demo", map[string]any{
-		"public_patterns": []string{"*"},
-	})
+	// Seed channel rules. Channel authorization is provisioning-only — a tenant
+	// with no rules is denied every subscribe and publish — so the demo tenant
+	// must be seeded to be usable out of the box.
+	_, err = c.SetChannelRules(ctx, "demo", defaultChannelRules())
 	if err != nil {
 		fmt.Fprintf(cmd.OutOrStdout(), "  Channel rules: %v\n", err)
 	} else {
-		fmt.Fprintln(cmd.OutOrStdout(), "  Channel rules: set (all public)")
+		fmt.Fprintln(cmd.OutOrStdout(), "  Channel rules: set (all channels open, subscribe + publish — override with 'sukko rules channels set')")
 	}
 
 	return nil
+}
+
+// defaultChannelRules returns the channel-rules request body seeded for the
+// demo tenant: all channels open for subscribe AND publish. Field names match
+// the provisioning SetChannelRulesRequest schema (public/default/publish_public).
+// The previous "public_patterns" key was unknown to the API and was silently
+// dropped, saving EMPTY rules — a deny-all tenant. Extracted so up_test.go can
+// assert the exact schema without network calls.
+func defaultChannelRules() map[string]any {
+	return map[string]any{
+		"public":         []string{"*"},
+		"default":        []string{"*"},
+		"publish_public": []string{"*"},
+	}
 }
 
 // defaultCatchAllRules returns the routing rules request body for the catch-all default rule.

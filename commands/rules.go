@@ -245,9 +245,10 @@ var channelsSetCmd = &cobra.Command{
 				return fmt.Errorf("parse rules file: %w", err)
 			}
 		} else if len(publicPatterns) > 0 {
-			req = map[string]any{
-				"public_patterns": publicPatterns,
-			}
+			// Schema field is "public" (SetChannelRulesRequest); the previous
+			// "public_patterns" key was unknown to the API and silently saved
+			// empty (deny-all) rules.
+			req = channelRulesBodyFromPublic(publicPatterns)
 		} else {
 			return errors.New("either --file or --public is required")
 		}
@@ -327,4 +328,12 @@ var rulesTestAccessCmd = &cobra.Command{
 func resolveTenantFromCmd(cmd *cobra.Command) string {
 	tenantFlag, _ := cmd.Flags().GetString("tenant")
 	return resolveTenant(tenantFlag)
+}
+
+// channelRulesBodyFromPublic builds the SetChannelRules request body for the
+// --public flag path. Extracted for schema assertions in tests.
+func channelRulesBodyFromPublic(patterns []string) map[string]any {
+	return map[string]any{
+		"public": patterns,
+	}
 }
