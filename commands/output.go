@@ -32,7 +32,7 @@ func init() {
 }
 
 func isTTY() bool {
-	return term.IsTerminal(int(os.Stdout.Fd()))
+	return term.IsTerminal(int(os.Stdout.Fd())) //nolint:gosec // G115: stdout fd is a small non-negative descriptor; the uintptr→int conversion cannot overflow
 }
 
 // defaultWriter returns os.Stdout. Used as the default output target for print helpers.

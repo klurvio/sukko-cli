@@ -419,7 +419,7 @@ func promptSecret(cmd *cobra.Command, label, flagName, flagVal string) (string, 
 		return flagVal, nil
 	}
 
-	fd := int(os.Stdin.Fd())
+	fd := int(os.Stdin.Fd()) //nolint:gosec // G115: stdin fd is a small non-negative descriptor; the uintptr→int conversion cannot overflow
 	if !term.IsTerminal(fd) {
 		return "", fmt.Errorf("%s is required (use --%s in non-interactive mode)", label, flagName)
 	}
