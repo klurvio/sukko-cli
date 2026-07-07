@@ -169,3 +169,28 @@ func TestRunTest_HintTextNoStatusCommand(t *testing.T) {
 		t.Errorf("hint text must not reference 'status --id': %q", got)
 	}
 }
+
+func TestReportStatus(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		data string
+		want string
+	}{
+		{"pass", `{"test_type":"validate","status":"pass","checks":[]}`, "pass"},
+		{"fail", `{"status":"fail"}`, "fail"},
+		{"error", `{"status":"error"}`, "error"},
+		{"no status field", `{"test_type":"validate"}`, ""},
+		{"not json (progress line)", `[elapsed] conns=1`, ""},
+		{"empty", ``, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := reportStatus(tt.data); got != tt.want {
+				t.Errorf("reportStatus(%q) = %q, want %q", tt.data, got, tt.want)
+			}
+		})
+	}
+}
