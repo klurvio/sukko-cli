@@ -313,6 +313,13 @@ func streamTestMetrics(cmd *cobra.Command, testerURL, testID, tok string) error 
 				} else {
 					printTestReport(out, reportData)
 				}
+				// Exit non-zero when the report indicates failure so CI and scripts can gate
+				// on it. This catches report-level fail/error; individual skipped checks keep
+				// the report status "pass", so a skip is NOT a failure here (assert on the
+				// specific check if a skip must fail — e.g. the kafka-ingest e2e target).
+				if status := reportStatus(reportData); status != "" && status != "pass" {
+					return fmt.Errorf("test reported status %q", status)
+				}
 			}
 			return nil
 		}
@@ -347,6 +354,19 @@ func printMetricsLine(out io.Writer, data string) {
 
 	fmt.Fprintf(out, "\r[%s] conns=%d sent=%d recv=%d errors=%d",
 		elapsed, int(conns), int(sent), int(recv), int(errTotal))
+}
+
+// reportStatus extracts the top-level "status" field from a test report JSON line
+// ("pass", "fail", or "error"). Returns "" when the data is not a parseable report so
+// callers treat an unreadable report as non-fatal rather than a false failure.
+func reportStatus(data string) string {
+	var report struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal([]byte(data), &report); err != nil {
+		return ""
+	}
+	return report.Status
 }
 
 func printTestReport(out io.Writer, data string) {
