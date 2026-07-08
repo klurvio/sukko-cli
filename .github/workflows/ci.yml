@@ -30,4 +30,7 @@ jobs:
           go-version-file: go.mod
       - uses: golangci/golangci-lint-action@v7
         with:
-          version: latest
+          # Pinned (not "latest") for reproducible lint: a gosec G115 behavior
+          # change between versions previously broke CI unpredictably. Bump
+          # deliberately and keep local linters in sync with this version.
+          version: v2.12.2
