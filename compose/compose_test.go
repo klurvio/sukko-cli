@@ -3,6 +3,7 @@ package compose
 import (
 	"bytes"
 	"context"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -55,6 +56,34 @@ func TestComposeFileContent(t *testing.T) {
 
 	if len(ComposeFileContent) == 0 {
 		t.Fatal("embedded ComposeFileContent is empty")
+	}
+}
+
+// TestComposeFileContent_PushServiceHasLicensePassthrough is a regression guard: without
+// SUKKO_LICENSE_KEY in its own environment block, the push-service enterprise profile fatals
+// at LoadConfig ("push-service requires an Enterprise license"). Other services also set the
+// var, so a whole-file check is insufficient — assert it inside the push-service block.
+func TestComposeFileContent_PushServiceHasLicensePassthrough(t *testing.T) {
+	t.Parallel()
+
+	serviceKey := regexp.MustCompile(`^ {2}[a-z0-9-]+:\s*$`) // top-level (2-space) service key
+	inBlock := false
+	found := false
+	for line := range strings.SplitSeq(string(ComposeFileContent), "\n") {
+		if line == "  push-service:" {
+			inBlock = true
+			continue
+		}
+		if inBlock && serviceKey.MatchString(line) {
+			break // reached the next service block without finding it
+		}
+		if inBlock && strings.Contains(line, "SUKKO_LICENSE_KEY") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("push-service block must pass SUKKO_LICENSE_KEY through (enterprise profile fatals at LoadConfig without it)")
 	}
 }
 
