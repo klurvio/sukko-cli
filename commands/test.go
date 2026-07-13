@@ -21,16 +21,17 @@ import (
 const testHTTPTimeout = 30 * time.Second
 
 var (
-	testConnections  int
-	testDuration     string
-	testPublishRate  int
-	testRampRate     int
-	testSuite        string
-	testLoadSuite    string // --suite for stress/soak (empty = default suite)
-	testTesterURL    string
-	testFollow       bool
-	testKafkaBrokers string
-	testTenantFlag   string
+	testConnections         int
+	testDuration            string
+	testPublishRate         int
+	testRampRate            int
+	testSuite               string
+	testLoadSuite           string // --suite for stress/soak (empty = default suite)
+	testTesterURL           string
+	testFollow              bool
+	testKafkaBrokers        string
+	testKafkaTopicNamespace string
+	testTenantFlag          string
 )
 
 func init() {
@@ -56,6 +57,7 @@ func init() {
 		cmd.Flags().StringVar(&testTesterURL, "tester-url", "", "Tester service URL (overrides context)")
 		cmd.Flags().BoolVarP(&testFollow, "follow", "f", false, "Stream metrics in real-time")
 		cmd.Flags().StringVar(&testKafkaBrokers, "kafka-brokers", "", "Per-run Kafka broker override for the kafka-ingest suite (comma-separated); credentials come from the tester's environment")
+		cmd.Flags().StringVar(&testKafkaTopicNamespace, "kafka-topic-namespace", "", "Per-run Kafka topic namespace override for the kafka-ingest suite; MUST match the server-under-test")
 		cmd.Flags().StringVar(&testTenantFlag, "tenant", "", "Tenant ID (uses active tenant from context if not set)")
 	}
 
@@ -152,7 +154,7 @@ func isLocalContext() bool {
 
 // buildTestContext assembles the context block for the tester API.
 // Returns nil if context should not be sent (local dev or incomplete).
-func buildTestContext(kafkaBrokers string) (map[string]any, error) {
+func buildTestContext(kafkaBrokers, kafkaTopicNamespace string) (map[string]any, error) {
 	if resolvedCtx == nil || resolvedStore == nil {
 		return nil, nil // no context available — tester uses own env vars
 	}
@@ -183,6 +185,10 @@ func buildTestContext(kafkaBrokers string) (map[string]any, error) {
 	if kafkaBrokers != "" {
 		ctx["kafka_brokers"] = kafkaBrokers
 	}
+	// Optional per-run topic-namespace override — MUST match the server-under-test.
+	if kafkaTopicNamespace != "" {
+		ctx["kafka_topic_namespace"] = kafkaTopicNamespace
+	}
 
 	return ctx, nil
 }
@@ -205,7 +211,7 @@ func runTest(cmd *cobra.Command, testType string, extra map[string]any) error {
 	}
 
 	// Context passthrough (remote only)
-	if testCtx, err := buildTestContext(testKafkaBrokers); err != nil {
+	if testCtx, err := buildTestContext(testKafkaBrokers, testKafkaTopicNamespace); err != nil {
 		return fmt.Errorf("build test context: %w", err)
 	} else if testCtx != nil {
 		body["context"] = testCtx
