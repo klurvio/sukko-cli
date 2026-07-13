@@ -90,7 +90,7 @@ func TestBuildTestContext(t *testing.T) {
 				resolvedStore = origStore
 			}()
 
-			result, err := buildTestContext(tt.kafkaBrokers)
+			result, err := buildTestContext(tt.kafkaBrokers, "")
 
 			if tt.wantErr {
 				if err == nil {
@@ -138,7 +138,7 @@ func TestBuildTestContext_KafkaBrokers(t *testing.T) {
 	defer func() { resolvedCtx, resolvedStore = origCtx, origStore }()
 
 	t.Run("override present", func(t *testing.T) {
-		ctx, err := buildTestContext("broker1:9092,broker2:9092")
+		ctx, err := buildTestContext("broker1:9092,broker2:9092", "prod")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -148,18 +148,37 @@ func TestBuildTestContext_KafkaBrokers(t *testing.T) {
 		if got := ctx["kafka_brokers"]; got != "broker1:9092,broker2:9092" {
 			t.Errorf("kafka_brokers = %v, want %q", got, "broker1:9092,broker2:9092")
 		}
+		if got := ctx["kafka_topic_namespace"]; got != "prod" {
+			t.Errorf("kafka_topic_namespace = %v, want %q", got, "prod")
+		}
 		if _, ok := ctx["message_backend_urls"]; ok {
 			t.Error("retired message_backend_urls must not be present")
 		}
 	})
 
-	t.Run("override empty omits field", func(t *testing.T) {
-		ctx, err := buildTestContext("")
+	t.Run("override empty omits fields", func(t *testing.T) {
+		ctx, err := buildTestContext("", "")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if _, ok := ctx["kafka_brokers"]; ok {
 			t.Error("kafka_brokers must be absent when the flag is empty")
+		}
+		if _, ok := ctx["kafka_topic_namespace"]; ok {
+			t.Error("kafka_topic_namespace must be absent when the flag is empty")
+		}
+	})
+
+	t.Run("namespace without brokers threads independently", func(t *testing.T) {
+		ctx, err := buildTestContext("", "prod")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got := ctx["kafka_topic_namespace"]; got != "prod" {
+			t.Errorf("kafka_topic_namespace = %v, want %q", got, "prod")
+		}
+		if _, ok := ctx["kafka_brokers"]; ok {
+			t.Error("kafka_brokers must be absent when only the namespace is set")
 		}
 	})
 }
