@@ -133,6 +133,7 @@ services:
       - "3008:3008"
       - "3009:3009"
     environment:
+      SUKKO_LICENSE_KEY: "${SUKKO_LICENSE_KEY:-}"
       PUSH_DRY_RUN: "true"
       MESSAGE_BACKEND: kafka
       DATABASE_URL: "postgres://sukko:sukko@postgres:5432/sukko?sslmode=disable"
