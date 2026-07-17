@@ -138,16 +138,16 @@ services:
       - "3008:3008"
       - "3009:3009"
     environment:
-      SUKKO_LICENSE_KEY: "${SUKKO_LICENSE_KEY:-}"
       PUSH_DRY_RUN: "true"
       MESSAGE_BACKEND: kafka
       DATABASE_URL: "postgres://sukko:sukko@postgres:5432/sukko?sslmode=disable"
       PROVISIONING_GRPC_ADDR: "provisioning:9090"
       KAFKA_BROKERS: "redpanda:9092"
-      KAFKA_TOPIC_NAMESPACE: "${KAFKA_TOPIC_NAMESPACE:-local}"  # push always requires an explicit namespace
+      KAFKA_TOPIC_NAMESPACE: "${KAFKA_TOPIC_NAMESPACE:-local}" # push always requires an explicit namespace
       PUSH_GRPC_PORT: "3008"
       PUSH_HTTP_PORT: "3009"
       ENVIRONMENT: local
+      SUKKO_LICENSE_KEY: "${SUKKO_LICENSE_KEY:-}" # push is Enterprise-gated; without this the enterprise profile fatals at LoadConfig (§XVIII: every other licensed service has this passthrough)
     depends_on:
       provisioning:
         condition: service_healthy
