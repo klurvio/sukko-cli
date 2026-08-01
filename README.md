@@ -48,7 +48,7 @@ sukko edition
 sukko tenant create --id my-app --name "My App"
 
 # Generate an ES256 key pair and register it
-sukko key create --tenant my-app --generate
+sukko keys create --tenant my-app --generate
 
 # Generate a JWT token (auto-discovers stored key)
 sukko token generate --tenant my-app --sub user1
@@ -90,11 +90,11 @@ Two methods for connecting to the gateway:
 
 ```bash
 # API key auth (simpler, for public channels)
-sukko key create --tenant my-app --generate
+sukko keys create --tenant my-app --generate
 sukko subscribe chat --api-key <key>
 
 # JWT auth (full auth path with user identity, roles, groups)
-sukko key create --tenant my-app --generate        # generate + register ES256 key pair
+sukko keys create --tenant my-app --generate        # generate + register ES256 key pair
 sukko token generate --tenant my-app --sub user1   # auto-discovers stored key
 sukko subscribe chat --token <jwt>
 ```
@@ -176,11 +176,12 @@ Infrastructure choices:
 
 | Component | Options | Default |
 |-----------|---------|---------|
-| Broadcast bus | `valkey` | `valkey` |
 | Message backend | `direct`, `kafka`, `redpanda` | `direct` |
 | Observability | `yes`, `no` | `no` |
 | Distributed tracing | `yes`, `no` | `yes` (if observability enabled) |
 | Continuous profiling | `yes`, `no` | `yes` (if observability enabled) |
+
+The broadcast bus (Valkey) and database (Postgres) are fixed — `init` does not prompt for them.
 
 ### Starting & Stopping
 
@@ -204,8 +205,8 @@ sukko down -v
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| Provisioning | `http://localhost:8080` | Admin API |
-| Gateway | `ws://localhost:3000` | WebSocket + SSE + REST publish |
+| Provisioning | `http://localhost:18080` | Admin API |
+| Gateway | `ws://localhost:13000` | WebSocket + SSE + REST publish |
 | WS Server | `http://localhost:3005` | Message routing server |
 | Tester | `http://localhost:8090` | Test orchestration |
 | Grafana | `http://localhost:3030` | Dashboards (if observability enabled) |
@@ -237,6 +238,9 @@ sukko grafana
 # Create a tenant
 sukko tenant create --id acme --name "ACME Corp" --consumer-type shared
 
+# Create with topic categories (--category is repeatable)
+sukko tenant create --id acme --name "ACME Corp" --category payments --category fintech
+
 # List tenants
 sukko tenant list
 sukko tenant list --limit 100 --offset 0 --status active
@@ -251,7 +255,7 @@ sukko tenant update acme --name "ACME Corporation"
 # Lifecycle management
 sukko tenant suspend acme
 sukko tenant reactivate acme
-sukko tenant deprovision acme    # initiates deletion with grace period
+sukko tenant deprovision acme    # initiates deletion with grace period (alias: sukko tenant delete)
 ```
 
 ## JWT Signing Keys
@@ -260,16 +264,18 @@ Manage per-tenant ES256/RS256/EdDSA signing keys for JWT authentication.
 
 ```bash
 # Auto-generate an ES256 key pair (registers public key, saves private key locally)
-sukko key create --tenant acme --generate
+sukko keys create --tenant acme --generate
 
 # Manual: register an existing public key
-sukko key create --tenant acme --algorithm ES256 --public-key-file key.pub
+sukko keys create --tenant acme --algorithm ES256 --public-key-file key.pub
+
+# Optional on create: --key-id <id> (auto-generated if omitted), --expires-at <RFC3339>
 
 # List keys
-sukko key list --tenant acme
+sukko keys list --tenant acme
 
 # Revoke a key
-sukko key revoke --tenant acme --key-id <key-id>
+sukko keys revoke --tenant acme --key-id <key-id>
 ```
 
 Generated private keys are stored in `~/.config/sukko/keys/<tenant-id>/<key-id>.pem`.
@@ -338,6 +344,9 @@ sukko rules routing get --tenant acme
 
 # Set from file
 sukko rules routing set --tenant acme --file routing.json
+
+# Add a single routing rule (all three flags required)
+sukko rules routing add --tenant acme --pattern "orders.**" --topics orders --priority 50
 
 # Delete routing rules
 sukko rules routing delete --tenant acme
@@ -470,13 +479,24 @@ Suites are dynamically fetched from the tester. Tab completion works when the te
 | `pubsub` | Pub-sub delivery with channel scoping (public, user, group) |
 | `tenant-isolation` | Cross-tenant message isolation |
 | `provisioning` | Provisioning API validation |
+| `sse` | SSE transport delivery (Pro+) |
+| `rest-publish` | REST publish endpoint delivery |
+| `push` | Web Push / FCM / APNs registration and delivery (Enterprise) |
+| `license-reload` | License hot-reload behavior |
+| `token-revocation` | Token/session revocation enforcement |
+| `kafka-ingest` | Direct-to-Kafka ingestion (requires `--kafka-brokers`) |
+
+The tester exposes additional suites depending on configuration (e.g. `api-key`, `upgrade`, and `webhooks` on Pro+). The `stress` and `soak` load tests also accept `--suite` (e.g. `--suite revocation`, Pro+). Run `sukko test validate --help` (with the tester running) for the live list.
 
 ```bash
-# Run with a specific message backend
-sukko test load --message-backend kafka --connections 50 -f
+# Run the kafka-ingest suite (requires a Kafka/Redpanda backend)
+sukko test validate --suite kafka-ingest --kafka-brokers <broker-host:port> --kafka-topic-namespace <namespace> -f
 
 # Override tester URL
 sukko test smoke --tester-url http://tester.staging:8090 -f
+
+# Target a specific tenant (omit to use an ephemeral throwaway tenant)
+sukko test validate --suite auth --tenant acme -f
 ```
 
 ### Context Passthrough
@@ -507,6 +527,7 @@ sukko edition compare
 | Topics/Tenant | 10 | 50 | Unlimited |
 | Routing Rules/Tenant | 10 | 100 | Unlimited |
 | Message Backend | direct | +kafka | All |
+| Database | sqlite | +postgres | All |
 | Per-Tenant Isolation | - | Yes | Yes |
 | Alerting | - | Yes | Yes |
 | SSE Transport | - | Yes | Yes |
@@ -573,7 +594,7 @@ sukko status
 
 | Flag | Environment Variable | Default | Description |
 |------|---------------------|---------|-------------|
-| `--api-url` | `SUKKO_API_URL` | `http://localhost:8080` | Provisioning API URL |
+| `--api-url` | `SUKKO_API_URL` | `http://localhost:18080` | Provisioning API URL |
 | `--token` | `SUKKO_TOKEN` | — | Admin auth token |
 | `--context` | `SUKKO_CONTEXT` | — | Active context name |
 | `-o, --output` | — | `table` | Output format (`table` or `json`) |
@@ -583,13 +604,14 @@ sukko status
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SUKKO_API_URL` | `http://localhost:8080` | Provisioning API URL |
-| `SUKKO_GATEWAY_URL` | `ws://localhost:3000` | WebSocket gateway URL |
-| `SUKKO_GATEWAY_HTTP_URL` | `http://localhost:3000` | Gateway HTTP endpoint |
+| `SUKKO_API_URL` | `http://localhost:18080` | Provisioning API URL |
+| `SUKKO_GATEWAY_URL` | `ws://localhost:13000` | WebSocket gateway URL |
+| `SUKKO_GATEWAY_HTTP_URL` | `http://localhost:13000` | Gateway HTTP endpoint |
 | `SUKKO_SERVER_URL` | `http://localhost:3005` | WebSocket server URL |
 | `SUKKO_TESTER_URL` | `http://localhost:8090` | Tester service URL |
 | `SUKKO_TOKEN` | — | Admin auth token |
 | `SUKKO_TESTER_TOKEN` | — | Tester API auth token |
+| `SUKKO_DEV_ADMIN_TOKEN` | — | Admin token for the local dev context (read by `sukko init`) |
 | `SUKKO_LICENSE_KEY` | — | License key passthrough |
 | `SUKKO_CONTEXT` | — | Active context name |
 
@@ -629,7 +651,7 @@ sukko completion fish > ~/.config/fish/completions/sukko.fish
 |---------|-------------|
 | `sukko auth` | Manage admin Ed25519 keypairs (keygen, register, revoke, list) |
 | `sukko tenant` | Manage tenants (create, get, list, update, suspend, reactivate, deprovision) |
-| `sukko key` | Manage JWT signing keys (`--generate` for ES256 key pair) |
+| `sukko keys` | Manage JWT signing keys (`--generate` for ES256 key pair) |
 | `sukko api-keys` | Manage API keys for gateway access |
 | `sukko token` | Generate, validate, and revoke JWT tokens |
 | `sukko subscribe` | Subscribe to WebSocket channels and stream messages |
@@ -643,8 +665,8 @@ sukko completion fish > ~/.config/fish/completions/sukko.fish
 | `sukko health` | Check service health with troubleshooting tips |
 | `sukko status` | Show platform status |
 | `sukko test` | Run smoke, load, stress, soak, and validation tests |
-| `sukko context` | Create, switch, list, or delete contexts |
-| `sukko config` | View/set config defaults |
+| `sukko context` | Create, add, switch, list, or remove contexts |
+| `sukko config` | View config defaults and live configuration |
 | `sukko completion` | Generate shell completions (bash, zsh, fish) |
 | `sukko version` | Print version info |
 
