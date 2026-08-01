@@ -75,7 +75,7 @@ var tokenGenerateCmd = &cobra.Command{
 		}
 
 		if algorithm == "" || keyFile == "" {
-			return errors.New("specify --algorithm (ES256, RS256, EdDSA) and --key-file, or run 'sukko key create --generate' first. HS256 is not supported by the Sukko gateway")
+			return errors.New("specify --algorithm (ES256, RS256, EdDSA) and --key-file, or run 'sukko keys create --generate' first. HS256 is not supported by the Sukko gateway")
 		}
 
 		validAlgorithms := map[string]bool{
