@@ -46,3 +46,7 @@ temp/
 handoffs
 sessions
 specs
+
+# Claude Code context layer — local-only (CDE migration 2026-08-21)
+CLAUDE.md
+.claude/
