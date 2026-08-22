@@ -52,14 +52,35 @@ func TestDefaultCatchAllRules(t *testing.T) {
 	}
 }
 
-func TestValidateProjectConfig_NATSBroadcast(t *testing.T) {
+func TestValidateProjectConfig_Broadcast(t *testing.T) {
 	t.Parallel()
-	err := validateProjectConfig(ProjectConfig{Broadcast: "nats"})
-	if err == nil {
-		t.Fatal("expected error for broadcast=nats, got nil")
+	tests := []struct {
+		name      string
+		broadcast string
+		wantErr   bool
+	}{
+		{"empty is valid", "", false},
+		{"valkey is valid", "valkey", false},
+		{"unknown rejected", "unknown_value", true},
+		{"legacy alias rejected", "redis", true},
 	}
-	if !strings.Contains(err.Error(), "nats") {
-		t.Errorf("error %q missing 'nats' context", err.Error())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateProjectConfig(ProjectConfig{Broadcast: tt.broadcast})
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for broadcast=%q, got nil", tt.broadcast)
+				}
+				if !strings.Contains(err.Error(), tt.broadcast) || !strings.Contains(err.Error(), "valkey") {
+					t.Errorf("error %q must name the rejected value and the supported one", err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expected broadcast=%q to be valid, got: %v", tt.broadcast, err)
+			}
+		})
 	}
 }
 

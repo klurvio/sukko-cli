@@ -193,10 +193,10 @@ func resolveEffectiveLicenseKey(envOverrides map[string]string) string {
 	return os.Getenv("SUKKO_LICENSE_KEY")
 }
 
-// validateProjectConfig rejects stale project config values that are no longer supported.
+// validateProjectConfig rejects project config values that are not supported.
 func validateProjectConfig(cfg ProjectConfig) error {
-	if cfg.Broadcast == "nats" {
-		return errors.New(`broadcast "nats" is no longer supported: update .sukko/config.json to remove the broadcast field or set it to "valkey"`)
+	if cfg.Broadcast != "" && cfg.Broadcast != "valkey" {
+		return fmt.Errorf("broadcast %q is not supported: remove the broadcast field from .sukko/config.json or set it to \"valkey\"", cfg.Broadcast)
 	}
 	return nil
 }
