@@ -20,6 +20,11 @@ type ServerMessage struct {
 	Type    string          `json:"type"`
 	Channel string          `json:"channel,omitempty"`
 	Data    json.RawMessage `json:"data,omitempty"`
+	// Mid is the stable message identity: an opaque string (at most 64 chars)
+	// that is identical on every copy of the same message — live broadcast,
+	// gap replay, and history. Omitted when the server does not send one
+	// (e.g. non-message frames or entries stored before mid was introduced).
+	Mid string `json:"mid,omitempty"`
 }
 
 // WSClient is a WebSocket client for communicating with the Sukko gateway.

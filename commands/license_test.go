@@ -149,6 +149,67 @@ func TestRunLicensePush_EmptyKey(t *testing.T) {
 	}
 }
 
+// TestEditionSupportsPush — push-service boots with a Pro license (Web Push);
+// FCM/APNs delivery additionally requires Enterprise, enforced server-side.
+func TestEditionSupportsPush(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		edition string
+		want    bool
+	}{
+		{"community", false},
+		{"pro", true},
+		{"enterprise", true},
+		{"", false},
+		{"unknown", false},
+	}
+	for _, tt := range tests {
+		t.Run("edition="+tt.edition, func(t *testing.T) {
+			t.Parallel()
+			if got := editionSupportsPush(tt.edition); got != tt.want {
+				t.Errorf("editionSupportsPush(%q) = %v, want %v", tt.edition, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestPushAction pins the compose orchestration decision for license
+// transitions: start when entering a push-capable edition (Pro or Enterprise),
+// ensure-healthy when staying push-capable, stop when leaving, none otherwise.
+// An empty prev edition (pre-push GetEdition failed) is treated as not
+// push-capable, so a Pro/Enterprise push still starts the service.
+func TestPushAction(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		prev string
+		next string
+		want pushOrchestration
+	}{
+		{"community to pro starts", "community", "pro", pushStart},
+		{"community to enterprise starts", "community", "enterprise", pushStart},
+		{"unknown prev to pro starts", "", "pro", pushStart},
+		{"pro to enterprise ensures", "pro", "enterprise", pushEnsure},
+		{"enterprise to pro ensures", "enterprise", "pro", pushEnsure},
+		{"pro to pro ensures", "pro", "pro", pushEnsure},
+		{"enterprise to enterprise ensures", "enterprise", "enterprise", pushEnsure},
+		{"pro to community stops", "pro", "community", pushStop},
+		{"enterprise to community stops", "enterprise", "community", pushStop},
+		{"community to community none", "community", "community", pushNone},
+		{"unknown to community none", "", "community", pushNone},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := pushAction(tt.prev, tt.next); got != tt.want {
+				t.Errorf("pushAction(%q, %q) = %v, want %v", tt.prev, tt.next, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseExpiry(t *testing.T) {
 	t.Parallel()
 

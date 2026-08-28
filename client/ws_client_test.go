@@ -82,6 +82,7 @@ func TestWSClient_SubscribeAndRead(t *testing.T) {
 		Type:    "message",
 		Channel: "test.channel",
 		Data:    json.RawMessage(`{"price":42}`),
+		Mid:     "9c5b1f0a3d2e6c47-2-1234",
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -124,6 +125,60 @@ func TestWSClient_SubscribeAndRead(t *testing.T) {
 	if msg.Channel != "test.channel" {
 		t.Errorf("channel = %q, want test.channel", msg.Channel)
 	}
+	if msg.Mid != "9c5b1f0a3d2e6c47-2-1234" {
+		t.Errorf("mid = %q, want 9c5b1f0a3d2e6c47-2-1234", msg.Mid)
+	}
+}
+
+// TestServerMessage_MidJSONRoundTrip — mid is the stable message identity
+// (opaque, ≤64 chars, identical across live/replay/history copies). The CLI
+// must carry it through 'sukko subscribe --output json' re-serialization
+// (printJSON re-marshals the decoded ServerMessage) and omit it when the
+// server did not send one.
+func TestServerMessage_MidJSONRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	t.Run("mid present survives round-trip", func(t *testing.T) {
+		t.Parallel()
+
+		wire := []byte(`{"type":"message","channel":"acme.trades","data":{"px":1},"mid":"4f8a2e6b0c9d1735-0-99"}`)
+		var msg ServerMessage
+		if err := json.Unmarshal(wire, &msg); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if msg.Mid != "4f8a2e6b0c9d1735-0-99" {
+			t.Fatalf("mid = %q, want 4f8a2e6b0c9d1735-0-99", msg.Mid)
+		}
+
+		out, err := json.Marshal(&msg)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		var round map[string]any
+		if err := json.Unmarshal(out, &round); err != nil {
+			t.Fatalf("unmarshal round-trip: %v", err)
+		}
+		if round["mid"] != "4f8a2e6b0c9d1735-0-99" {
+			t.Errorf("re-serialized mid = %v, want 4f8a2e6b0c9d1735-0-99", round["mid"])
+		}
+	})
+
+	t.Run("mid absent is omitted", func(t *testing.T) {
+		t.Parallel()
+
+		msg := ServerMessage{Type: "message", Channel: "acme.trades", Data: json.RawMessage(`{"px":1}`)}
+		out, err := json.Marshal(&msg)
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		var round map[string]any
+		if err := json.Unmarshal(out, &round); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		if _, ok := round["mid"]; ok {
+			t.Errorf("empty mid must be omitted from JSON output, got %s", out)
+		}
+	})
 }
 
 func TestWSClient_Publish(t *testing.T) {

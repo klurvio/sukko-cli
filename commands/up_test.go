@@ -203,27 +203,27 @@ func TestBuildComposeConfig_MessageBackend(t *testing.T) {
 	}
 }
 
-func TestRequireLicenseForKafka(t *testing.T) {
+// TestShouldPrintKafkaPublishNote — kafka is available on every edition
+// (ADR-0005): 'sukko up' must never block on a missing license. The only
+// remaining license-related behavior is an informational note that client/REST
+// publish into the kafka backend needs Pro routing rules.
+func TestShouldPrintKafkaPublishNote(t *testing.T) {
 	tests := []struct {
 		name       string
 		backend    string
 		licenseKey string
-		wantErr    bool
+		want       bool
 	}{
-		{"direct needs no license", "direct", "", false},
-		{"empty backend needs no license", "", "", false},
-		{"kafka without license errors", "kafka", "", true},
-		{"redpanda without license errors", "redpanda", "", true},
-		{"kafka with license ok", "kafka", "some-token", false},
+		{"direct never notes", "direct", "", false},
+		{"empty backend never notes", "", "", false},
+		{"kafka without license notes", "kafka", "", true},
+		{"redpanda without license notes", "redpanda", "", true},
+		{"kafka with license stays quiet", "kafka", "some-token", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := requireLicenseForKafka(tt.backend, tt.licenseKey)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("requireLicenseForKafka(%q, present=%v) err = %v, wantErr %v", tt.backend, tt.licenseKey != "", err, tt.wantErr)
-			}
-			if tt.wantErr && err != nil && !strings.Contains(err.Error(), "Pro/Enterprise license") {
-				t.Errorf("error %q should mention the license requirement", err.Error())
+			if got := shouldPrintKafkaPublishNote(tt.backend, tt.licenseKey); got != tt.want {
+				t.Errorf("shouldPrintKafkaPublishNote(%q, present=%v) = %v, want %v", tt.backend, tt.licenseKey != "", got, tt.want)
 			}
 		})
 	}

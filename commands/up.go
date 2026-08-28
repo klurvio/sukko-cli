@@ -33,7 +33,9 @@ const (
 )
 
 // isKafkaFamilyBackend reports whether the message backend selects the Kafka/Redpanda
-// broker (as opposed to the default "direct" backend). Both aliases are Pro/Enterprise-gated.
+// broker (as opposed to the default "direct" backend). Both aliases are available on
+// every edition (ADR-0005) — ingest/fan-out runs license-free; only client/REST publish
+// INTO the kafka backend needs Pro routing rules (ChannelTopicRouting).
 func isKafkaFamilyBackend(backend string) bool {
 	return backend == backendKafka || backend == backendRedpanda
 }
@@ -103,14 +105,12 @@ func runUp(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	// Kafka mode is Pro/Enterprise-gated — ws-server rejects MESSAGE_BACKEND=kafka on
-	// Community at startup. Fail fast with a clear message instead of a container
-	// crash-loop on a deep FeatureError. The server startup gate remains authoritative.
-	//
-	// The check must mirror what compose's ${SUKKO_LICENSE_KEY:-} interpolation actually
-	// resolves (see resolveEffectiveLicenseKey).
-	if err := requireLicenseForKafka(cfg.MessageBackend, resolveEffectiveLicenseKey(envOverrides)); err != nil {
-		return err
+	// Kafka mode runs on every edition (ADR-0005) — no license gate. The only
+	// license-shaped edge is that client/REST publish INTO the kafka backend needs
+	// Pro routing rules, so surface that as an informational note (never a block)
+	// when no license key is configured.
+	if shouldPrintKafkaPublishNote(cfg.MessageBackend, resolveEffectiveLicenseKey(envOverrides)) {
+		fmt.Fprintln(cmd.OutOrStdout(), kafkaPublishNote)
 	}
 
 	fmt.Fprintf(cmd.OutOrStdout(), "Starting Sukko (postgres + %s + %s)...\n",
@@ -169,22 +169,23 @@ func runUp(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// requireLicenseForKafka returns an error when a kafka-family message backend is selected
-// without a configured license key. Kafka mode is Pro/Enterprise-gated (ws-server rejects it
-// at startup), so this gives a clear operator-facing failure before `compose up` rather than a
-// container crash-loop. The server startup gate remains the authoritative enforcement point.
-func requireLicenseForKafka(backend, licenseKey string) error {
-	if isKafkaFamilyBackend(backend) && licenseKey == "" {
-		return fmt.Errorf("message backend %q requires a Pro/Enterprise license, but none is configured — set one with 'sukko license set <token>' or switch to direct mode", backend)
-	}
-	return nil
+// kafkaPublishNote is printed (never enforced) when a kafka-family backend starts
+// without a license key: ingest/consume/fan-out works on every edition, but client
+// and REST publish INTO the kafka backend requires Pro routing rules.
+const kafkaPublishNote = "Note: kafka ingest runs on every edition. Publishing from clients or REST into the kafka backend requires Pro routing rules — add a license with 'sukko license set <token>' if you need that path."
+
+// shouldPrintKafkaPublishNote reports whether the informational kafka publish note
+// applies: a kafka-family backend is selected and no license key is configured.
+// Kafka itself is available on every edition (ADR-0005) — this never blocks startup.
+func shouldPrintKafkaPublishNote(backend, licenseKey string) bool {
+	return isKafkaFamilyBackend(backend) && licenseKey == ""
 }
 
 // resolveEffectiveLicenseKey returns the license key that compose's ${SUKKO_LICENSE_KEY:-}
 // interpolation will actually see: the context-store key (already placed in envOverrides) takes
 // precedence, falling back to a shell-exported SUKKO_LICENSE_KEY (inherited by the compose
 // subprocess via os.Environ() in compose.Manager.Up). Keeping this in sync with the real
-// resolution prevents requireLicenseForKafka from false-positiving on the documented
+// resolution prevents shouldPrintKafkaPublishNote from false-positiving on the documented
 // `export SUKKO_LICENSE_KEY` workflow.
 func resolveEffectiveLicenseKey(envOverrides map[string]string) string {
 	if lk := envOverrides["SUKKO_LICENSE_KEY"]; lk != "" {
@@ -361,16 +362,16 @@ func reconcilePushService(cmd *cobra.Command, mgr *compose.Manager, cfg ProjectC
 	edition := resp.Edition
 	compatibleBackend := isKafkaFamilyBackend(cfg.MessageBackend)
 
-	if edition == "enterprise" && compatibleBackend {
+	if editionSupportsPush(edition) && compatibleBackend {
 		if !pushServiceHealthy(cmd.Context(), mgr) {
-			fmt.Fprintln(cmd.OutOrStdout(), "\nStarting push-service (Enterprise)...")
-			if err := mgr.StartService(cmd.Context(), cmd.OutOrStdout(), "push-service", []string{"enterprise"}, pushServiceTimeout); err != nil {
+			fmt.Fprintln(cmd.OutOrStdout(), "\nStarting push-service (Web Push, Pro+)...")
+			if err := mgr.StartService(cmd.Context(), cmd.OutOrStdout(), "push-service", pushComposeProfiles, pushServiceTimeout); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: push-service failed to start: %v\n", err)
 			}
 		}
-	} else if edition != "enterprise" {
+	} else if !editionSupportsPush(edition) {
 		if pushServiceRunning(cmd.Context(), mgr) {
-			fmt.Fprintln(cmd.OutOrStdout(), "\nStopping push-service (no longer Enterprise)...")
+			fmt.Fprintln(cmd.OutOrStdout(), "\nStopping push-service (edition below Pro)...")
 			if err := mgr.StopService(cmd.Context(), "push-service"); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to stop push-service: %v\n", err)
 			}
