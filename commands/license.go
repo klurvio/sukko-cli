@@ -25,6 +25,52 @@ var licenseCmd = &cobra.Command{
 	Long:  "Store, view, and remove the Sukko license key from the CLI context.",
 }
 
+// Edition identifiers as reported by provisioning's /edition and license endpoints.
+const (
+	editionPro        = "pro"
+	editionEnterprise = "enterprise"
+)
+
+// pushComposeProfiles activates the push-service in the embedded compose file.
+// The profile keeps its historical "enterprise" name even though push-service
+// now boots with a Pro license (Web Push) — renaming is deferred until the
+// platform compose (the sync source of truth) renames it in lockstep.
+var pushComposeProfiles = []string{"enterprise"}
+
+// editionSupportsPush reports whether the edition licenses the push service.
+// Push-service boots with a Pro license (Web Push); FCM/APNs delivery
+// additionally requires Enterprise — that gate is enforced server-side.
+func editionSupportsPush(edition string) bool {
+	return edition == editionPro || edition == editionEnterprise
+}
+
+// pushOrchestration is the compose action derived from a license transition.
+type pushOrchestration int
+
+const (
+	pushNone   pushOrchestration = iota // neither edition push-capable — nothing to do
+	pushStart                           // entered a push-capable edition — start push-service
+	pushEnsure                          // still push-capable — ensure push-service is healthy
+	pushStop                            // left push-capable editions — stop push-service
+)
+
+// pushAction decides the push-service orchestration for a license transition.
+// An empty prevEdition (the pre-push edition lookup failed) counts as not
+// push-capable, so pushing a Pro/Enterprise key still starts the service.
+func pushAction(prevEdition, newEdition string) pushOrchestration {
+	prevPush, newPush := editionSupportsPush(prevEdition), editionSupportsPush(newEdition)
+	switch {
+	case newPush && !prevPush:
+		return pushStart
+	case newPush && prevPush:
+		return pushEnsure
+	case prevPush:
+		return pushStop
+	default:
+		return pushNone
+	}
+}
+
 // licenseClaims represents the decoded payload of a license key.
 type licenseClaims struct {
 	Edition string `json:"edition"`
@@ -289,9 +335,10 @@ func runLicensePush(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(cmd.OutOrStdout(), "License applied. Edition: %s, Org: %s, Expires: %s\n",
 		capitalizeEdition(resp.Edition), resp.Org, formatExpiry(parseExpiry(resp.ExpiresAt)))
 
-	// 8. Compose orchestration — local contexts only (FR-000a)
+	// 8. Compose orchestration — local contexts only (FR-000a). Push-service is
+	// Pro+ (Web Push); FCM/APNs delivery additionally requires Enterprise.
 	if resolvedCtx == nil || resolvedCtx.Type != "local" {
-		if resp.Edition == "enterprise" {
+		if editionSupportsPush(resp.Edition) {
 			fmt.Fprintln(cmd.OutOrStdout(), "To start push-service in K8s: helm upgrade --set push-service.enabled=true")
 		}
 		return nil
@@ -302,24 +349,28 @@ func runLicensePush(cmd *cobra.Command, args []string) error {
 	if prevEdition != nil {
 		prevEditionStr = prevEdition.Edition
 	}
-	newEdition := resp.Edition
 
-	// No orchestration needed when neither edition is enterprise
-	if newEdition != "enterprise" && prevEditionStr != "enterprise" {
+	action := pushAction(prevEditionStr, resp.Edition)
+	if action == pushNone {
 		return nil
 	}
 
-	// For an upgrade to enterprise, validate backend compatibility before any side effects (FR-002)
-	if newEdition == "enterprise" && prevEditionStr != "enterprise" {
+	// Starting (or ensuring) push-service requires a kafka-family backend for
+	// the push-service container. The license is already applied at this point
+	// and push is only one of many Pro/Enterprise features, so an incompatible
+	// backend is a note, not a failure. Stopping needs no backend check.
+	if action != pushStop {
 		projCfg, err := loadProjectConfig()
-		if err != nil {
-			return fmt.Errorf("load project config: %w", err)
-		}
-		if projCfg == nil {
-			return errors.New("project config not found — run 'sukko init' first")
-		}
-		if !isKafkaFamilyBackend(projCfg.MessageBackend) {
-			return fmt.Errorf("enterprise push requires kafka or redpanda message backend (current: %s) — run 'sukko init' to reconfigure, then 'sukko up' again", projCfg.MessageBackend)
+		switch {
+		case err != nil:
+			fmt.Fprintf(cmd.ErrOrStderr(), "Warning: push-service not started — load project config: %v\n", err)
+			return nil
+		case projCfg == nil:
+			fmt.Fprintln(cmd.ErrOrStderr(), "Note: push-service not started — no project config found. Run 'sukko init' if you want push notifications locally.")
+			return nil
+		case !isKafkaFamilyBackend(projCfg.MessageBackend):
+			fmt.Fprintf(cmd.ErrOrStderr(), "Note: push-service not started — it requires the kafka or redpanda message backend (current: %s). Run 'sukko init' to reconfigure, then 'sukko up', if you want push notifications locally.\n", projCfg.MessageBackend)
+			return nil
 		}
 	}
 
@@ -332,32 +383,35 @@ func runLicensePush(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("create compose manager: %w", err)
 	}
 
-	switch {
-	case newEdition == "enterprise" && prevEditionStr != "enterprise":
-		// Start push-service (FR-003)
-		fmt.Fprintln(cmd.OutOrStdout(), "\nStarting push-service (Enterprise)...")
-		if err := mgr.StartService(cmd.Context(), cmd.OutOrStdout(), "push-service", []string{"enterprise"}, pushServiceTimeout); err != nil {
+	switch action {
+	case pushStart:
+		// Newly push-capable — start push-service (FR-003)
+		fmt.Fprintln(cmd.OutOrStdout(), "\nStarting push-service (Web Push, Pro+)...")
+		if err := mgr.StartService(cmd.Context(), cmd.OutOrStdout(), "push-service", pushComposeProfiles, pushServiceTimeout); err != nil {
 			return fmt.Errorf("start push-service: %w", err)
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Push-service is healthy.")
-	case newEdition == "enterprise" && prevEditionStr == "enterprise":
-		// Idempotent — already enterprise (FR-007)
+	case pushEnsure:
+		// Idempotent — still push-capable (FR-007)
 		if pushServiceHealthy(cmd.Context(), mgr) {
 			fmt.Fprintln(cmd.OutOrStdout(), "Push-service already running and healthy.")
 		} else {
 			// Push-service unhealthy/absent — retry start
 			fmt.Fprintln(cmd.OutOrStdout(), "\nRestarting push-service...")
-			if err := mgr.StartService(cmd.Context(), cmd.OutOrStdout(), "push-service", []string{"enterprise"}, pushServiceTimeout); err != nil {
+			if err := mgr.StartService(cmd.Context(), cmd.OutOrStdout(), "push-service", pushComposeProfiles, pushServiceTimeout); err != nil {
 				return fmt.Errorf("start push-service: %w", err)
 			}
 		}
-	case prevEditionStr == "enterprise" && newEdition != "enterprise":
-		// Downgrade FROM enterprise (FR-005)
-		fmt.Fprintln(cmd.OutOrStdout(), "\nStopping push-service (no longer Enterprise)...")
+	case pushStop:
+		// Downgrade below Pro (FR-005)
+		fmt.Fprintln(cmd.OutOrStdout(), "\nStopping push-service (edition below Pro)...")
 		if err := mgr.StopService(cmd.Context(), "push-service"); err != nil {
 			return fmt.Errorf("stop push-service: %w", err)
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Push-service stopped.")
+	default:
+		// pushNone — unreachable: it returned above, before the compose file
+		// write. Present only to satisfy switch exhaustiveness.
 	}
 
 	return nil

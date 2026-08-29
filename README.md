@@ -481,7 +481,7 @@ Suites are dynamically fetched from the tester. Tab completion works when the te
 | `provisioning` | Provisioning API validation |
 | `sse` | SSE transport delivery (Pro+) |
 | `rest-publish` | REST publish endpoint delivery |
-| `push` | Web Push / FCM / APNs registration and delivery (Enterprise) |
+| `push` | Web Push / FCM / APNs registration and delivery (Pro+ for Web Push; FCM/APNs delivery needs Enterprise) |
 | `license-reload` | License hot-reload behavior |
 | `token-revocation` | Token/session revocation enforcement |
 | `kafka-ingest` | Direct-to-Kafka ingestion (requires `--kafka-brokers`) |
@@ -519,6 +519,8 @@ sukko edition compare
 
 ### Edition Comparison
 
+The full data path — Kafka/Redpanda backend, message history, live gap recovery, and REST publish — is available on every edition; the capacity limits are the tier wall. Client and REST publish into the kafka backend require Pro routing rules (Channel-Topic Routing).
+
 | Dimension | Community | Pro | Enterprise |
 |-----------|-----------|-----|------------|
 | Tenants | 3 | 50 | Unlimited |
@@ -526,14 +528,20 @@ sukko edition compare
 | Shards | 1 | 8 | Unlimited |
 | Topics/Tenant | 10 | 50 | Unlimited |
 | Routing Rules/Tenant | 10 | 100 | Unlimited |
-| Message Backend | direct | +kafka | All |
-| Database | sqlite | +postgres | All |
-| Per-Tenant Isolation | - | Yes | Yes |
+| Kafka Backend | Yes | Yes | Yes |
+| Message History | Yes | Yes | Yes |
+| Live Gap Recovery | Yes | Yes | Yes |
+| REST Publish | Yes | Yes | Yes |
+| Channel-Topic Routing | - | Yes | Yes |
+| Tenant Limits & Quotas | - | Yes | Yes |
 | Alerting | - | Yes | Yes |
 | SSE Transport | - | Yes | Yes |
-| Web Push | - | - | Yes |
+| Webhooks | - | Yes | Yes |
+| Admin UI | - | Yes | Yes |
+| Web Push | - | Yes | Yes |
+| Push Analytics | - | Yes | Yes |
+| Mobile Push (FCM/APNs) | - | - | Yes |
 | Audit Logging | - | - | Yes |
-| Admin UI SSO | - | - | Yes |
 
 ### License Management
 
@@ -553,21 +561,21 @@ sukko license remove
 
 License keys are encrypted at rest. The key is automatically passed to services on `sukko up`.
 
-### Enterprise Upgrade
+### Push Notifications Upgrade
 
-Push an Enterprise license to a running deployment to enable push notifications:
+Push a Pro or Enterprise license to a running deployment to enable push notifications. Web Push (VAPID) is available from Pro; FCM/APNs delivery additionally requires Enterprise:
 
 ```bash
-# Push Enterprise license — push-service starts automatically (local dev)
-sukko license push <enterprise-key>
+# Push a Pro or Enterprise license — push-service starts automatically (local dev)
+sukko license push <pro-or-enterprise-key>
 
-# Push Pro license — push-service stops automatically (downgrade)
-sukko license push <pro-key>
+# Downgrade below Pro — push-service stops automatically
+sukko license push <community-key>
 ```
 
-**Requirements**: Push-service requires `kafka` or `redpanda` message backend. If your backend is `direct`, run `sukko init` to reconfigure before upgrading.
+**Requirements**: Push-service requires `kafka` or `redpanda` message backend. If your backend is `direct`, run `sukko init` to reconfigure before upgrading (the license still applies; only push-service orchestration is skipped).
 
-**Fresh start**: If `SUKKO_LICENSE_KEY` is set to an Enterprise key, `sukko up` automatically starts push-service alongside core services.
+**Fresh start**: If `SUKKO_LICENSE_KEY` is set to a Pro or Enterprise key, `sukko up` automatically starts push-service alongside core services.
 
 **Kubernetes**: After pushing the license, enable push-service via Helm:
 ```bash

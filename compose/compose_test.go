@@ -60,9 +60,10 @@ func TestComposeFileContent(t *testing.T) {
 }
 
 // TestComposeFileContent_PushServiceHasLicensePassthrough is a regression guard: without
-// SUKKO_LICENSE_KEY in its own environment block, the push-service enterprise profile fatals
-// at LoadConfig ("push-service requires an Enterprise license"). Other services also set the
-// var, so a whole-file check is insufficient — assert it inside the push-service block.
+// SUKKO_LICENSE_KEY in its own environment block, the push-service (Pro+ — Web Push;
+// FCM/APNs delivery needs Enterprise) fatals at LoadConfig when its profile is activated.
+// Other services also set the var, so a whole-file check is insufficient — assert it
+// inside the push-service block.
 func TestComposeFileContent_PushServiceHasLicensePassthrough(t *testing.T) {
 	t.Parallel()
 
@@ -83,7 +84,7 @@ func TestComposeFileContent_PushServiceHasLicensePassthrough(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Error("push-service block must pass SUKKO_LICENSE_KEY through (enterprise profile fatals at LoadConfig without it)")
+		t.Error("push-service block must pass SUKKO_LICENSE_KEY through (Pro+-licensed service fatals at LoadConfig without it)")
 	}
 }
 

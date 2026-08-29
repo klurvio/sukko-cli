@@ -86,8 +86,10 @@ services:
       - PPROF_ENABLED=${PPROF_ENABLED:-false}
       - PYROSCOPE_ENABLED=${PYROSCOPE_ENABLED:-false}
       - PYROSCOPE_ADDR=http://pyroscope:4040
-      # Kafka mode (Pro/Enterprise, opt-in): set MESSAGE_BACKEND=kafka to enable, with a Pro
-      # license and `--profile kafka`. Unset ⇒ omitted ⇒ direct (Community default).
+      # Kafka mode (available on every edition, ADR-0005; opt-in): set MESSAGE_BACKEND=kafka
+      # and add `--profile kafka`. Client publish into kafka needs Pro routing rules
+      # (ChannelTopicRouting); ingest/fan-out runs license-free. Unset ⇒ omitted ⇒ direct
+      # (the zero-dependency default on all editions).
       - MESSAGE_BACKEND
       - KAFKA_BROKERS=redpanda:9092
       # Explicit topic namespace prefix; required when MESSAGE_BACKEND=kafka (ignored in direct mode).
@@ -131,6 +133,8 @@ services:
       retries: 10
       start_period: 10s
   # ─── Push Service — activate with: --profile enterprise --profile kafka ──
+  # (Pro+ license required — Web Push; FCM/APNs delivery needs Enterprise. The
+  # profile keeps its historical "enterprise" name for now.)
   push-service:
     image: ghcr.io/klurvio/sukko-push:latest
     profiles: ["enterprise"]
@@ -147,7 +151,7 @@ services:
       PUSH_GRPC_PORT: "3008"
       PUSH_HTTP_PORT: "3009"
       ENVIRONMENT: local
-      SUKKO_LICENSE_KEY: "${SUKKO_LICENSE_KEY:-}" # push is Enterprise-gated; without this the enterprise profile fatals at LoadConfig (§XVIII: every other licensed service has this passthrough)
+      SUKKO_LICENSE_KEY: "${SUKKO_LICENSE_KEY:-}" # push needs a Pro+ license (WebPush); without this the enterprise profile fatals at LoadConfig (§XVIII: every other licensed service has this passthrough)
     depends_on:
       provisioning:
         condition: service_healthy
@@ -169,9 +173,10 @@ services:
       PROVISIONING_URL: "http://provisioning:8080"
       TESTER_AUTH_TOKEN: "sukko-dev-token"
       # KAFKA_BROKERS intentionally unset: this compose runs ws-server in direct
-      # mode (Community), so the kafka-ingest suite correctly SKIPS here. Running
-      # kafka-ingest requires a Pro/Enterprise kafka-backend server — provided by
-      # the dedicated e2e harness, not the operator quick-start compose.
+      # mode by default, so the kafka-ingest suite correctly SKIPS here. Running
+      # kafka-ingest requires a kafka-backend server (any edition; its rest-publish
+      # produce leg needs Pro routing rules) — provided by the dedicated e2e
+      # harness, not the operator quick-start compose.
       # Explicit topic namespace, required once KAFKA_BROKERS is set (kafka-ingest override);
       # MUST match the server-under-test's KAFKA_TOPIC_NAMESPACE.
       KAFKA_TOPIC_NAMESPACE: "${KAFKA_TOPIC_NAMESPACE:-local}"

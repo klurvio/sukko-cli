@@ -64,15 +64,111 @@ func TestEditionCompare_TableWidth(t *testing.T) {
 func TestEditionCompare_DimensionCount(t *testing.T) {
 	t.Parallel()
 
-	// Count non-separator rows (FR-014 specifies 13 dimensions)
+	// Count non-separator rows (5 limits + 14 features under the ADR-0005 edition model)
 	count := 0
 	for _, row := range editionMatrix {
 		if row.dimension != "" {
 			count++
 		}
 	}
-	if count != 13 {
-		t.Errorf("editionMatrix has %d dimensions, want 13", count)
+	if count != 19 {
+		t.Errorf("editionMatrix has %d dimensions, want 19", count)
+	}
+}
+
+// TestEditionMatrix_EditionModel pins the ADR-0005 edition remap: the full data
+// path (kafka backend, message history, live gap recovery, REST publish) is
+// Community; Web Push and push analytics are Pro; mobile push (FCM/APNs) and
+// audit logging are Enterprise. It also guards against resurrecting rows that
+// misrepresented the model (tenant isolation is a security property of every
+// edition, never a paid feature; no edition gates the database driver).
+func TestEditionMatrix_EditionModel(t *testing.T) {
+	t.Parallel()
+
+	rows := map[string][3]string{}
+	for _, row := range editionMatrix {
+		if row.dimension != "" {
+			rows[row.dimension] = [3]string{row.community, row.pro, row.enterprise}
+		}
+	}
+
+	want := map[string][3]string{
+		"Kafka Backend":          {"Yes", "Yes", "Yes"},
+		"Message History":        {"Yes", "Yes", "Yes"},
+		"Live Gap Recovery":      {"Yes", "Yes", "Yes"},
+		"REST Publish":           {"Yes", "Yes", "Yes"},
+		"Channel-Topic Routing":  {"No", "Yes", "Yes"},
+		"Tenant Limits & Quotas": {"No", "Yes", "Yes"},
+		"SSE Transport":          {"No", "Yes", "Yes"},
+		"Web Push":               {"No", "Yes", "Yes"},
+		"Push Analytics":         {"No", "Yes", "Yes"},
+		"Mobile Push (FCM/APNs)": {"No", "No", "Yes"},
+		"Audit Logging":          {"No", "No", "Yes"},
+	}
+	for dim, vals := range want {
+		got, ok := rows[dim]
+		if !ok {
+			t.Errorf("editionMatrix missing dimension %q", dim)
+			continue
+		}
+		if got != vals {
+			t.Errorf("dimension %q = %v, want %v", dim, got, vals)
+		}
+	}
+
+	for _, banned := range []string{"Per-Tenant Isolation", "Message Backend", "Database"} {
+		if _, ok := rows[banned]; ok {
+			t.Errorf("editionMatrix still contains retired dimension %q", banned)
+		}
+	}
+}
+
+// TestComparisonData_EditionModel keeps the JSON comparison payload consistent
+// with the editionMatrix under the ADR-0005 edition model.
+func TestComparisonData_EditionModel(t *testing.T) {
+	t.Parallel()
+
+	data := comparisonData()
+	editions, ok := data["editions"].([]map[string]any)
+	if !ok || len(editions) != 3 {
+		t.Fatalf("editions field missing or wrong shape: %v", data["editions"])
+	}
+
+	wantFeatures := map[string][3]bool{
+		"kafka_backend":         {true, true, true},
+		"message_history":       {true, true, true},
+		"live_gap_recovery":     {true, true, true},
+		"rest_publish":          {true, true, true},
+		"channel_topic_routing": {false, true, true},
+		"tenant_limits_quotas":  {false, true, true},
+		"alerting":              {false, true, true},
+		"sse_transport":         {false, true, true},
+		"webhooks":              {false, true, true},
+		"admin_ui":              {false, true, true},
+		"web_push":              {false, true, true},
+		"push_analytics":        {false, true, true},
+		"mobile_push":           {false, false, true},
+		"audit_logging":         {false, false, true},
+	}
+
+	for i, e := range editions {
+		features, ok := e["features"].(map[string]any)
+		if !ok {
+			t.Fatalf("edition[%d] features missing or wrong type", i)
+		}
+		if len(features) != len(wantFeatures) {
+			t.Errorf("edition[%d] has %d features, want %d", i, len(features), len(wantFeatures))
+		}
+		for name, editionsWant := range wantFeatures {
+			got, ok := features[name].(bool)
+			if !ok {
+				t.Errorf("edition[%d] feature %q missing or not bool", i, name)
+				continue
+			}
+			if got != editionsWant[i] {
+				t.Errorf("edition[%d] feature %q = %v, want %v", i, name, got, editionsWant[i])
+			}
+		}
 	}
 }
 
