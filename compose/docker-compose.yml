@@ -116,11 +116,6 @@ services:
       PROVISIONING_GRPC_ADDR: "provisioning:9090"
       SERVER_GRPC_ADDR: "ws-server:3006"
       PUSH_GRPC_ADDR: "push-service:3008"
-      # Push surface opt-in: set GATEWAY_PUSH_ENABLED=true when running the push
-      # profile (the routes 404 without it; the push service is deploy-optional).
-      # `sukko up` sets it automatically for push-capable editions on a kafka-
-      # family backend (see gatewayPushEnabled in commands/up.go).
-      GATEWAY_PUSH_ENABLED: "${GATEWAY_PUSH_ENABLED:-false}"
       SUKKO_LICENSE_KEY: "${SUKKO_LICENSE_KEY:-}"
       # Observability (disabled by default, enable with OTEL_TRACING_ENABLED=true)
       OTEL_TRACING_ENABLED: "${OTEL_TRACING_ENABLED:-false}"
