@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
@@ -280,5 +282,67 @@ func TestDefaultChannelRules(t *testing.T) {
 	}
 	if len(body) != 3 {
 		t.Errorf("defaultChannelRules has %d keys, want exactly 3 (public, default, publish_public): %v", len(body), body)
+	}
+}
+
+// testLicenseKey builds an unverified-decodable license key with the given
+// edition — the same payload.signature shape decodeLicenseClaims consumes.
+func testLicenseKey(t *testing.T, edition string) string {
+	t.Helper()
+	payload, err := json.Marshal(licenseClaims{Edition: edition, Org: "Test Org"})
+	if err != nil {
+		t.Fatalf("marshal claims: %v", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(payload) + "." +
+		base64.RawURLEncoding.EncodeToString([]byte("fake-signature"))
+}
+
+// TestGatewayPushEnabled pins the boot-time gateway push decision (the sukko#244
+// GATEWAY_PUSH_ENABLED companion): the gateway's push surface is enabled at `up`
+// only when the effective license decodes to a push-capable edition AND the
+// backend is kafka-family — the same condition the push-service reconciliation
+// uses, so the gateway routes and the service they proxy to come up together.
+func TestGatewayPushEnabled(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		key     string
+		backend string
+		want    bool
+	}{
+		{"pro + kafka", testLicenseKey(t, "pro"), backendKafka, true},
+		{"enterprise + redpanda", testLicenseKey(t, "enterprise"), backendRedpanda, true},
+		{"pro + direct (empty backend)", testLicenseKey(t, "pro"), "", false},
+		{"community + kafka", testLicenseKey(t, "community"), backendKafka, false},
+		{"no license + kafka", "", backendKafka, false},
+		{"garbage license + kafka", "not-a-license", backendKafka, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := gatewayPushEnabled(tt.key, tt.backend); got != tt.want {
+				t.Errorf("gatewayPushEnabled(%q backend, license %q) = %v, want %v", tt.backend, tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestApplyGatewayPushEnv pins the wiring semantics both ways: enabled sets the
+// env to "true"; disabled leaves the key ABSENT (not "false") so the compose
+// default — and an operator's own exported value — still apply.
+func TestApplyGatewayPushEnv(t *testing.T) {
+	t.Parallel()
+
+	enabled := map[string]string{}
+	applyGatewayPushEnv(enabled, testLicenseKey(t, "pro"), backendKafka)
+	if got := enabled["GATEWAY_PUSH_ENABLED"]; got != "true" {
+		t.Errorf("enabled case: env = %q, want true", got)
+	}
+
+	disabled := map[string]string{}
+	applyGatewayPushEnv(disabled, testLicenseKey(t, "community"), backendKafka)
+	if _, present := disabled["GATEWAY_PUSH_ENABLED"]; present {
+		t.Error("disabled case: key must be absent, not set to false")
 	}
 }

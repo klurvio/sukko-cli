@@ -113,6 +113,13 @@ func runUp(cmd *cobra.Command, _ []string) error {
 		fmt.Fprintln(cmd.OutOrStdout(), kafkaPublishNote)
 	}
 
+	// Gateway push surface (sukko#244): the gateway registers its push routes only
+	// when GATEWAY_PUSH_ENABLED=true at ITS start — flipping it later requires a
+	// container recreate. Decide at boot from the same condition the push-service
+	// reconciliation uses (push-capable edition + kafka-family backend), so the
+	// routes and the service they proxy to come up together.
+	applyGatewayPushEnv(envOverrides, resolveEffectiveLicenseKey(envOverrides), cfg.MessageBackend)
+
 	fmt.Fprintf(cmd.OutOrStdout(), "Starting Sukko (postgres + %s + %s)...\n",
 		cfg.Broadcast, cfg.MessageBackend)
 
@@ -321,6 +328,35 @@ func loadAdminPublicKey() string {
 }
 
 const pushServiceTimeout = 30 * time.Second
+
+// gatewayPushEnabled decides whether the gateway should boot with its push
+// surface enabled (GATEWAY_PUSH_ENABLED, sukko#244): the effective license
+// decodes to a push-capable edition AND the backend is kafka-family — the same
+// condition reconcilePushService uses to start push-service. The decode is
+// UNVERIFIED (decodeLicenseClaims; the CLI holds no public key), which is safe
+// for an orchestration hint: the server enforces the license for real, so a
+// forged edition claim only exposes gateway routes whose backing service will
+// refuse to serve — no capability is granted by the routes existing.
+func gatewayPushEnabled(licenseKey, messageBackend string) bool {
+	if licenseKey == "" || !isKafkaFamilyBackend(messageBackend) {
+		return false
+	}
+	claims, err := decodeLicenseClaims(licenseKey)
+	if err != nil {
+		return false
+	}
+	return editionSupportsPush(claims.Edition)
+}
+
+// applyGatewayPushEnv sets GATEWAY_PUSH_ENABLED=true in the compose env when the
+// gateway should boot with its push surface. When disabled the key is left ABSENT
+// (not "false") so the embedded compose's `${GATEWAY_PUSH_ENABLED:-false}` default
+// applies — an operator's own exported value is then still honored by compose.
+func applyGatewayPushEnv(envOverrides map[string]string, licenseKey, messageBackend string) {
+	if gatewayPushEnabled(licenseKey, messageBackend) {
+		envOverrides["GATEWAY_PUSH_ENABLED"] = "true"
+	}
+}
 
 // reconcilePushService starts or stops push-service based on the final edition.
 // Uses findLocalContext for license key and provisioning URL (FR-006).
