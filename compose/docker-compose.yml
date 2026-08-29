@@ -116,6 +116,9 @@ services:
       PROVISIONING_GRPC_ADDR: "provisioning:9090"
       SERVER_GRPC_ADDR: "ws-server:3006"
       PUSH_GRPC_ADDR: "push-service:3008"
+      # Push surface opt-in: set GATEWAY_PUSH_ENABLED=true when running the push
+      # profile (the routes 404 without it; the push service is deploy-optional).
+      GATEWAY_PUSH_ENABLED: "${GATEWAY_PUSH_ENABLED:-false}"
       SUKKO_LICENSE_KEY: "${SUKKO_LICENSE_KEY:-}"
       # Observability (disabled by default, enable with OTEL_TRACING_ENABLED=true)
       OTEL_TRACING_ENABLED: "${OTEL_TRACING_ENABLED:-false}"
@@ -134,7 +137,8 @@ services:
       start_period: 10s
   # ─── Push Service — activate with: --profile enterprise --profile kafka ──
   # (Pro+ license required — Web Push; FCM/APNs delivery needs Enterprise. The
-  # profile keeps its historical "enterprise" name for now.)
+  # profile keeps its historical "enterprise" name until the sukko-cli embedded
+  # compose is renamed in lockstep.)
   push-service:
     image: ghcr.io/klurvio/sukko-push:latest
     profiles: ["enterprise"]
@@ -170,6 +174,10 @@ services:
       - "8090:8090"
     environment:
       GATEWAY_URL: "ws://ws-gateway:3000"
+      # Gateway metrics BASE URL (suites append /metrics) — lets the token-revocation suite gate
+      # on the revocation stream being connected before revoking (FR-007,
+      # gateway_token_revocation_stream_state). Matches the soak/stress revocation suites' usage.
+      TESTER_GATEWAY_METRICS_URL: "http://ws-gateway:3000"
       PROVISIONING_URL: "http://provisioning:8080"
       TESTER_AUTH_TOKEN: "sukko-dev-token"
       # KAFKA_BROKERS intentionally unset: this compose runs ws-server in direct
@@ -177,7 +185,7 @@ services:
       # kafka-ingest requires a kafka-backend server (any edition; its rest-publish
       # produce leg needs Pro routing rules) — provided by the dedicated e2e
       # harness, not the operator quick-start compose.
-      # Explicit topic namespace, required once KAFKA_BROKERS is set (kafka-ingest override);
+      # Explicit topic namespace, required once KAFKA_BROKERS is set (kafka override);
       # MUST match the server-under-test's KAFKA_TOPIC_NAMESPACE.
       KAFKA_TOPIC_NAMESPACE: "${KAFKA_TOPIC_NAMESPACE:-local}"
       # Webhook delivery base URL — the address webhook-worker uses to POST deliveries back
