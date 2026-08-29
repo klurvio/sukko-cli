@@ -391,6 +391,11 @@ func runLicensePush(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("start push-service: %w", err)
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Push-service is healthy.")
+		// The gateway registers its push routes only when GATEWAY_PUSH_ENABLED=true
+		// at ITS start (sukko#244). On a not-push→push transition the running
+		// gateway was booted without it, and recreating it from here would need the
+		// full `up` environment — so point at the safe path instead.
+		fmt.Fprintln(cmd.OutOrStdout(), "Note: the gateway's push routes (subscribe/vapid-key) enable on the next 'sukko up' — the running gateway was started without its push surface.")
 	case pushEnsure:
 		// Idempotent — still push-capable (FR-007)
 		if pushServiceHealthy(cmd.Context(), mgr) {
@@ -409,6 +414,10 @@ func runLicensePush(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("stop push-service: %w", err)
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Push-service stopped.")
+		// The gateway's push routes stay registered until its next recreate; with
+		// the service gone they answer 503, which is harmless — the next 'sukko up'
+		// boots the gateway without the push surface (404s, per sukko#244).
+		fmt.Fprintln(cmd.OutOrStdout(), "Note: the gateway's push routes disable on the next 'sukko up'.")
 	default:
 		// pushNone — unreachable: it returned above, before the compose file
 		// write. Present only to satisfy switch exhaustiveness.
