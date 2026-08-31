@@ -23,6 +23,7 @@ var (
 	ErrAPIUnauthorized = errors.New("API unauthorized")
 	ErrAPIForbidden    = errors.New("API forbidden")
 	ErrAPINotFound     = errors.New("API not found")
+	ErrAPIConflict     = errors.New("API conflict")
 	ErrAPIRateLimited  = errors.New("API rate limited")
 	ErrAPIInternal     = errors.New("API internal error")
 
@@ -472,6 +473,10 @@ func (c *AdminClient) doJSON(ctx context.Context, method, path string, body any)
 			return nil, fmt.Errorf("%w: %s", ErrAPIForbidden, body)
 		case resp.StatusCode == http.StatusNotFound:
 			return nil, fmt.Errorf("%w: %s", ErrAPINotFound, body)
+		case resp.StatusCode == http.StatusConflict:
+			// Distinct sentinel: callers treat "already exists" differently
+			// from real 4xx failures (e.g. sukko up's idempotent demo tenant).
+			return nil, fmt.Errorf("%w: %s", ErrAPIConflict, body)
 		case resp.StatusCode >= 400 && resp.StatusCode < 500:
 			return nil, fmt.Errorf("%w (HTTP %d): %s", ErrAPIBadRequest, resp.StatusCode, body)
 		default:

@@ -43,50 +43,79 @@ var authKeygenCmd = &cobra.Command{
 		}
 
 		keyPath := filepath.Join(dir, "admin.key")
-		pubPath := filepath.Join(dir, "admin.pub")
 
-		// Check if keypair already exists
+		// Explicit keygen on an existing keypair is an error (unlike the
+		// idempotent init path): regenerating would silently invalidate the
+		// key provisioning already bootstrapped.
 		if _, err := os.Stat(keyPath); err == nil {
 			return fmt.Errorf("keypair already exists at %s — delete it first to regenerate", keyPath)
 		}
 
-		// Generate Ed25519 keypair
-		pub, priv, err := ed25519.GenerateKey(rand.Reader)
+		created, pubBase64, err := ensureAdminKeypair(dir)
 		if err != nil {
-			return fmt.Errorf("generate keypair: %w", err)
+			return err
+		}
+		if !created {
+			// The pre-check raced a concurrent creation — report honestly
+			// rather than claim generation of a key we did not make.
+			return fmt.Errorf("keypair already exists at %s — delete it first to regenerate", keyPath)
 		}
 
-		// Ensure directory exists
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return fmt.Errorf("create directory %s: %w", dir, err)
-		}
-
-		// Save private key (PEM, PKCS8, 0600 permissions)
-		privDER, err := x509.MarshalPKCS8PrivateKey(priv)
-		if err != nil {
-			return fmt.Errorf("marshal private key: %w", err)
-		}
-		privPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDER})
-		if err := os.WriteFile(keyPath, privPEM, 0o600); err != nil {
-			return fmt.Errorf("write private key: %w", err)
-		}
-
-		// Save public key (raw base64 — the format ADMIN_BOOTSTRAP_KEY accepts)
-		pubBase64 := base64.StdEncoding.EncodeToString(pub)
-		if err := os.WriteFile(pubPath, []byte(pubBase64+"\n"), 0o600); err != nil {
-			return fmt.Errorf("write public key: %w", err)
-		}
-
-		// Save key ID — matches provisioning's auto-registered bootstrap key ID
-		kidPath := filepath.Join(dir, "admin.kid")
-		if err := os.WriteFile(kidPath, []byte("bootstrap-0\n"), 0o600); err != nil {
-			return fmt.Errorf("write key ID: %w", err)
-		}
-
-		fmt.Fprintf(cmd.OutOrStdout(), "Keypair generated:\n  Private: %s\n  Public:  %s\n", keyPath, pubPath)
+		fmt.Fprintf(cmd.OutOrStdout(), "Keypair generated:\n  Private: %s\n  Public:  %s\n", keyPath, filepath.Join(dir, "admin.pub"))
 		fmt.Fprintf(cmd.OutOrStdout(), "\nFor Kubernetes bootstrap:\n  helm upgrade ... --set provisioning.adminBootstrapKey=\"%s\"\n", pubBase64)
 		return nil
 	},
+}
+
+// ensureAdminKeypair generates the admin Ed25519 keypair in dir if absent and
+// reports whether it created one, plus the base64 public key (the format
+// ADMIN_BOOTSTRAP_KEY accepts). Idempotent: an existing keypair is never
+// touched — regenerating would invalidate the key the running provisioning
+// service already registered. Called by `sukko init` (so the documented
+// init→up quick-start works on a pristine machine) and `sukko auth keygen`.
+func ensureAdminKeypair(dir string) (created bool, pubBase64 string, err error) {
+	keyPath := filepath.Join(dir, "admin.key")
+	pubPath := filepath.Join(dir, "admin.pub")
+
+	if _, statErr := os.Stat(keyPath); statErr == nil {
+		existing, readErr := os.ReadFile(pubPath) //nolint:gosec // G304: path derived from context directory, not user input
+		if readErr != nil {
+			return false, "", fmt.Errorf("keypair exists but public key unreadable: %w", readErr)
+		}
+		return false, strings.TrimSpace(string(existing)), nil
+	}
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return false, "", fmt.Errorf("generate keypair: %w", err)
+	}
+
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return false, "", fmt.Errorf("create directory %s: %w", dir, err)
+	}
+
+	// Private key: PEM, PKCS8, 0600 permissions.
+	privDER, err := x509.MarshalPKCS8PrivateKey(priv)
+	if err != nil {
+		return false, "", fmt.Errorf("marshal private key: %w", err)
+	}
+	privPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDER})
+	if err := os.WriteFile(keyPath, privPEM, 0o600); err != nil {
+		return false, "", fmt.Errorf("write private key: %w", err)
+	}
+
+	// Public key: raw base64 — the format ADMIN_BOOTSTRAP_KEY accepts.
+	pubBase64 = base64.StdEncoding.EncodeToString(pub)
+	if err := os.WriteFile(pubPath, []byte(pubBase64+"\n"), 0o600); err != nil {
+		return false, "", fmt.Errorf("write public key: %w", err)
+	}
+
+	// Key ID — matches provisioning's auto-registered bootstrap key ID.
+	if err := os.WriteFile(filepath.Join(dir, "admin.kid"), []byte("bootstrap-0\n"), 0o600); err != nil {
+		return false, "", fmt.Errorf("write key ID: %w", err)
+	}
+
+	return true, pubBase64, nil
 }
 
 var authRegisterCmd = &cobra.Command{

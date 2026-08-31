@@ -13,12 +13,15 @@ func init() {
 	tenantCmd.AddCommand(tenantCreateCmd, tenantGetCmd, tenantListCmd, tenantUpdateCmd,
 		tenantSuspendCmd, tenantReactivateCmd, tenantDeprovisionCmd, tenantDeleteCmd)
 
-	// create flags
-	tenantCreateCmd.Flags().String("id", "", "Tenant ID (required)")
+	// create flags — "slug" matches the provisioning API's CreateTenantRequest
+	// field (#53: the old --id flag serialized to an "id" key the API never
+	// read, so every create was rejected for an empty slug; --category mapped
+	// to a field the API does not have — topic routing is configured via
+	// routing rules, not tenant creation).
+	tenantCreateCmd.Flags().String("slug", "", "Tenant slug — Kafka namespace and URL identifier, e.g. \"acme\" (required)")
 	tenantCreateCmd.Flags().String("name", "", "Display name")
-	tenantCreateCmd.Flags().StringSlice("category", nil, "Topic categories (repeatable)")
 	tenantCreateCmd.Flags().String("consumer-type", "shared", "Consumer type (shared|dedicated)")
-	_ = tenantCreateCmd.MarkFlagRequired("id")
+	_ = tenantCreateCmd.MarkFlagRequired("slug")
 
 	// list flags
 	tenantListCmd.Flags().Int("limit", 50, "Maximum results")
@@ -38,9 +41,8 @@ var tenantCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a new tenant",
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		id, _ := cmd.Flags().GetString("id")
+		slug, _ := cmd.Flags().GetString("slug")
 		name, _ := cmd.Flags().GetString("name")
-		categories, _ := cmd.Flags().GetStringSlice("category")
 		consumerType, _ := cmd.Flags().GetString("consumer-type")
 
 		if consumerType != "shared" && consumerType != "dedicated" {
@@ -48,28 +50,32 @@ var tenantCreateCmd = &cobra.Command{
 		}
 
 		if name == "" {
-			name = id
-		}
-
-		req := map[string]any{
-			"id":            id,
-			"name":          name,
-			"consumer_type": consumerType,
-		}
-		if len(categories) > 0 {
-			req["categories"] = categories
+			name = slug
 		}
 
 		c, err := newClient()
 		if err != nil {
 			return err
 		}
-		result, err := c.CreateTenant(cmd.Context(), req)
+		result, err := c.CreateTenant(cmd.Context(), buildTenantCreateRequest(slug, name, consumerType))
 		if err != nil {
 			return fmt.Errorf("create tenant: %w", err)
 		}
 		return printOutput(result, output)
 	},
+}
+
+// buildTenantCreateRequest builds the provisioning CreateTenantRequest body.
+// Field names MUST match the API schema (slug/name/consumer_type) — shared by
+// `sukko tenant create` and `sukko up`'s demo-tenant provisioning so the two
+// cannot drift (#53: a hand-rolled map here once sent "id", which the API
+// silently ignored, rejecting every create for an empty slug).
+func buildTenantCreateRequest(slug, name, consumerType string) map[string]any {
+	return map[string]any{
+		"slug":          slug,
+		"name":          name,
+		"consumer_type": consumerType,
+	}
 }
 
 var tenantGetCmd = &cobra.Command{
