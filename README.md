@@ -45,7 +45,7 @@ sukko up
 sukko edition
 
 # Create a tenant
-sukko tenant create --id my-app --name "My App"
+sukko tenant create --slug my-app --name "My App"
 
 # Generate an ES256 key pair and register it
 sukko keys create --tenant my-app --generate
@@ -236,10 +236,7 @@ sukko grafana
 
 ```bash
 # Create a tenant
-sukko tenant create --id acme --name "ACME Corp" --consumer-type shared
-
-# Create with topic categories (--category is repeatable)
-sukko tenant create --id acme --name "ACME Corp" --category payments --category fintech
+sukko tenant create --slug acme --name "ACME Corp" --consumer-type shared
 
 # List tenants
 sukko tenant list

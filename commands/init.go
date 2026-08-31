@@ -173,6 +173,21 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	}
 
 	fmt.Fprintln(cmd.OutOrStdout(), "Local context created and set as active.")
+
+	// Generate the admin keypair `sukko up` requires, so the documented
+	// init→up quick-start works on a pristine machine (previously up failed
+	// with "run 'sukko auth keygen' first" while its own hint pointed back at
+	// init). Idempotent — an existing keypair is never regenerated.
+	keypairDir := filepath.Join(store.Dir(), ctx.Name) // same dir resolveKeypairDir() derives for the active context
+	created, _, err := ensureAdminKeypair(keypairDir)
+	if err != nil {
+		return fmt.Errorf("generate admin keypair: %w", err)
+	}
+	if created {
+		fmt.Fprintln(cmd.OutOrStdout(), "Admin keypair generated (used to authenticate against provisioning).")
+	} else {
+		fmt.Fprintln(cmd.OutOrStdout(), "Admin keypair already present — kept.")
+	}
 	fmt.Fprintf(cmd.OutOrStdout(), "\nStack: %s + %s + %s\n", cfg.Database, cfg.Broadcast, cfg.MessageBackend)
 	if os.Getenv("SUKKO_DEV_ADMIN_TOKEN") == "" {
 		fmt.Fprintln(cmd.ErrOrStderr(), "Note: using default dev credentials. Set SUKKO_DEV_ADMIN_TOKEN for non-local environments.")

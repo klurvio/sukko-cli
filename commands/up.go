@@ -154,13 +154,22 @@ func runUp(cmd *cobra.Command, _ []string) error {
 
 	// Provision default tenant
 	fmt.Fprintln(cmd.OutOrStdout(), "\nProvisioning default tenant...")
-	if err := provisionDefaultTenant(cmd); err != nil {
-		fmt.Fprintf(cmd.ErrOrStderr(), "Warning: default tenant provisioning failed: %v\n", err)
-		fmt.Fprintln(cmd.ErrOrStderr(), "  Services are running. Create a tenant manually with 'sukko tenant create'.")
+	provErr := provisionDefaultTenant(cmd)
+	if provErr != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "Error: default tenant provisioning failed: %v\n", provErr)
+		fmt.Fprintln(cmd.ErrOrStderr(), "  Services are running, but the demo tenant is NOT usable.")
+		fmt.Fprintln(cmd.ErrOrStderr(), "  Create one manually with 'sukko tenant create' or re-run 'sukko up'.")
 	}
 
 	// Push-service reconciliation — start/stop based on final edition
 	reconcilePushService(cmd, mgr, cfg)
+
+	if provErr != nil {
+		// §III: no silent failures — a broken demo tenant must not end in
+		// "Sukko is ready!" with exit 0 (an audit caught exactly that: a 500
+		// CREATE_FAILED buried under a success banner).
+		return fmt.Errorf("default tenant provisioning: %w", provErr)
+	}
 
 	fmt.Fprintln(cmd.OutOrStdout(), "\nSukko is ready! Try:")
 	fmt.Fprintln(cmd.OutOrStdout(), "  sukko status")
@@ -247,6 +256,38 @@ func buildComposeConfig(cfg ProjectConfig) (profiles []string, envOverrides map[
 	return profiles, envOverrides
 }
 
+// provisionOutcome classifies a provisioning-step error for the demo-tenant
+// flow. Only a 409 conflict means "already exists" (idempotent re-run of
+// `sukko up`); only an EDITION_LIMIT rejection is a clean skip; everything
+// else is a real failure that must surface (§III — an audit found a 500
+// CREATE_FAILED reported as "(may already exist)" followed by "Sukko is
+// ready!").
+type provisionOutcome int
+
+const (
+	provisionOK           provisionOutcome = iota // no error
+	provisionExists                               // 409 — already provisioned, idempotent re-run
+	provisionEditionGated                         // 403 EDITION_LIMIT — feature above this edition
+	provisionFailed                               // anything else — must surface loudly
+)
+
+// editionLimitCode is the provisioning API's error code for edition-gated
+// features (matches httputil.ErrorResponse's "code" field).
+const editionLimitCode = "EDITION_LIMIT"
+
+func classifyProvisionError(err error) provisionOutcome {
+	switch {
+	case err == nil:
+		return provisionOK
+	case errors.Is(err, client.ErrAPIConflict):
+		return provisionExists
+	case errors.Is(err, client.ErrAPIForbidden) && strings.Contains(err.Error(), editionLimitCode):
+		return provisionEditionGated
+	default:
+		return provisionFailed
+	}
+}
+
 func provisionDefaultTenant(cmd *cobra.Command) error {
 	c, err := newClient()
 	if err != nil {
@@ -255,35 +296,40 @@ func provisionDefaultTenant(cmd *cobra.Command) error {
 
 	ctx := cmd.Context()
 
-	// Create default tenant (ignore conflict — may already exist)
-	_, err = c.CreateTenant(ctx, map[string]any{
-		"id":            "demo",
-		"name":          "Demo",
-		"consumer_type": "shared",
-	})
-	if err != nil {
-		fmt.Fprintf(cmd.OutOrStdout(), "  Tenant 'demo': %v (may already exist)\n", err)
-	} else {
+	// Create default tenant — a 409 means it already exists (re-run), which is
+	// fine; any other error is a real failure and must not be shrugged off.
+	_, err = c.CreateTenant(ctx, buildTenantCreateRequest("demo", "Demo", "shared"))
+	switch classifyProvisionError(err) {
+	case provisionOK:
 		fmt.Fprintln(cmd.OutOrStdout(), "  Tenant 'demo': created")
+	case provisionExists:
+		fmt.Fprintln(cmd.OutOrStdout(), "  Tenant 'demo': already exists")
+	default:
+		return fmt.Errorf("create demo tenant: %w", err)
 	}
 
-	// Set catch-all routing rules
+	// Catch-all routing rules — a Pro feature (ChannelTopicRouting). On
+	// Community the API answers 403 EDITION_LIMIT: skip cleanly, it is not a
+	// provisioning failure — rules gate client/REST publish INTO the kafka
+	// backend only; the direct backend and kafka ingest need none.
 	_, err = c.SetRoutingRules(ctx, "demo", defaultCatchAllRules())
-	if err != nil {
-		fmt.Fprintf(cmd.OutOrStdout(), "  Routing rules: %v\n", err)
-	} else {
+	switch classifyProvisionError(err) {
+	case provisionOK:
 		fmt.Fprintln(cmd.OutOrStdout(), "  Routing rules: set (catch-all)")
+	case provisionEditionGated:
+		fmt.Fprintln(cmd.OutOrStdout(), "  Routing rules: skipped (Pro feature — not needed for the direct backend or kafka ingest)")
+	default:
+		return fmt.Errorf("set routing rules: %w", err)
 	}
 
 	// Seed channel rules. Channel authorization is provisioning-only — a tenant
 	// with no rules is denied every subscribe and publish — so the demo tenant
-	// must be seeded to be usable out of the box.
-	_, err = c.SetChannelRules(ctx, "demo", defaultChannelRules())
-	if err != nil {
-		fmt.Fprintf(cmd.OutOrStdout(), "  Channel rules: %v\n", err)
-	} else {
-		fmt.Fprintln(cmd.OutOrStdout(), "  Channel rules: set (all channels open, subscribe + publish — override with 'sukko rules channels set')")
+	// must be seeded to be usable out of the box. Ungated on every edition:
+	// any failure here leaves a deny-all tenant and must surface.
+	if _, err = c.SetChannelRules(ctx, "demo", defaultChannelRules()); err != nil {
+		return fmt.Errorf("seed channel rules: %w", err)
 	}
+	fmt.Fprintln(cmd.OutOrStdout(), "  Channel rules: set (all channels open, subscribe + publish — override with 'sukko rules channels set')")
 
 	return nil
 }
