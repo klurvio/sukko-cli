@@ -7,8 +7,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sukko-dev/cli/client"
 	"github.com/spf13/cobra"
+	"github.com/sukko-dev/cli/client"
 )
 
 var (

@@ -10,8 +10,8 @@ import (
 	"slices"
 	"strings"
 
-	clicontext "github.com/sukko-dev/cli/context"
 	"github.com/spf13/cobra"
+	clicontext "github.com/sukko-dev/cli/context"
 )
 
 const (

@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/sukko-dev/cli/client"
 	"github.com/spf13/cobra"
+	"github.com/sukko-dev/cli/client"
 )
 
 func init() {

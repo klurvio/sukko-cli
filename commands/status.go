@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/sukko-dev/cli/compose"
 	"github.com/spf13/cobra"
+	"github.com/sukko-dev/cli/compose"
 )
 
 const statusHTTPTimeout = 3 * time.Second

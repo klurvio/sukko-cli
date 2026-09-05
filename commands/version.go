@@ -3,8 +3,8 @@ package commands
 import (
 	"fmt"
 
-	"github.com/sukko-dev/cli/internal/version"
 	"github.com/spf13/cobra"
+	"github.com/sukko-dev/cli/internal/version"
 )
 
 func init() {
