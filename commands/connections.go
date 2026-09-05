@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/klurvio/sukko-cli/client"
+	"github.com/sukko-dev/cli/client"
 	"github.com/spf13/cobra"
 )
 

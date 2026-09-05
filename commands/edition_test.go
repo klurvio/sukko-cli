@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/klurvio/sukko-cli/client"
+	"github.com/sukko-dev/cli/client"
 )
 
 func TestEditionCmd_Registration(t *testing.T) {

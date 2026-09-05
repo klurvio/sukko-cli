@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/klurvio/sukko-cli/commands"
+	"github.com/sukko-dev/cli/commands"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )

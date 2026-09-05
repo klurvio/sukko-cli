@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	clicontext "github.com/klurvio/sukko-cli/context"
+	clicontext "github.com/sukko-dev/cli/context"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )

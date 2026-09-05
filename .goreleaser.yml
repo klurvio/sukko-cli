@@ -20,9 +20,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X 'github.com/klurvio/sukko-cli/internal/version.Version={{.Version}}'
-      - -X 'github.com/klurvio/sukko-cli/internal/version.CommitHash={{.ShortCommit}}'
-      - -X 'github.com/klurvio/sukko-cli/internal/version.BuildTime={{.Date}}'
+      - -X 'github.com/sukko-dev/cli/internal/version.Version={{.Version}}'
+      - -X 'github.com/sukko-dev/cli/internal/version.CommitHash={{.ShortCommit}}'
+      - -X 'github.com/sukko-dev/cli/internal/version.BuildTime={{.Date}}'
 
 archives:
   - id: sukko
@@ -40,9 +40,9 @@ nfpms:
   - id: sukko
     builds: [sukko]
     package_name: sukko
-    vendor: Klurvio
-    homepage: https://github.com/klurvio/sukko-cli
-    maintainer: Klurvio <contact@klurvio.com>
+    vendor: Sukko
+    homepage: https://github.com/sukko-dev/cli
+    maintainer: Sukko <contact@sukko.dev>
     description: "Sukko WebSocket platform CLI"
     license: MIT
     formats:
@@ -59,11 +59,11 @@ nfpms:
 
 brews:
   - repository:
-      owner: klurvio
+      owner: sukko-dev
       name: homebrew-tap
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     ids: [sukko]
-    homepage: https://github.com/klurvio/sukko-cli
+    homepage: https://github.com/sukko-dev/cli
     description: "Sukko WebSocket platform CLI"
     license: MIT
     install: |
@@ -75,11 +75,11 @@ brews:
 
 scoops:
   - repository:
-      owner: klurvio
+      owner: sukko-dev
       name: scoop-bucket
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
     ids: [sukko]
-    homepage: https://github.com/klurvio/sukko-cli
+    homepage: https://github.com/sukko-dev/cli
     description: "Sukko WebSocket platform CLI"
     license: MIT
     skip_upload: auto

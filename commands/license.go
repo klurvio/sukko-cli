@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/klurvio/sukko-cli/client"
-	"github.com/klurvio/sukko-cli/compose"
-	clicontext "github.com/klurvio/sukko-cli/context"
+	"github.com/sukko-dev/cli/client"
+	"github.com/sukko-dev/cli/compose"
+	clicontext "github.com/sukko-dev/cli/context"
 	"github.com/spf13/cobra"
 )
 

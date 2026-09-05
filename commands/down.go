@@ -3,7 +3,7 @@ package commands
 import (
 	"fmt"
 
-	"github.com/klurvio/sukko-cli/compose"
+	"github.com/sukko-dev/cli/compose"
 	"github.com/spf13/cobra"
 )
 

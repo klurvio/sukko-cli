@@ -1,6 +1,6 @@
 # Sukko CLI
 
-Command-line interface for the [Sukko](https://github.com/klurvio/sukko-issues) WebSocket infrastructure platform.
+Command-line interface for the [Sukko](https://github.com/sukko-dev/sukko-issues) WebSocket infrastructure platform.
 
 The CLI serves two purposes:
 
@@ -12,25 +12,25 @@ The CLI serves two purposes:
 ### Homebrew (macOS/Linux)
 
 ```bash
-brew install klurvio/tap/sukko
+brew install sukko-dev/tap/sukko
 ```
 
 ### Scoop (Windows)
 
 ```powershell
-scoop bucket add klurvio https://github.com/klurvio/scoop-bucket
+scoop bucket add sukko https://github.com/sukko-dev/scoop-bucket
 scoop install sukko
 ```
 
 ### Go
 
 ```bash
-go install github.com/klurvio/sukko-cli@latest
+go install github.com/sukko-dev/cli@latest
 ```
 
 ### Binary
 
-Download from [Releases](https://github.com/klurvio/sukko-cli/releases). Available for Linux, macOS, and Windows on amd64 and arm64.
+Download from [Releases](https://github.com/sukko-dev/cli/releases). Available for Linux, macOS, and Windows on amd64 and arm64.
 
 ## Quick Start
 

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/klurvio/sukko-cli/client"
+	"github.com/sukko-dev/cli/client"
 	"github.com/spf13/cobra"
 )
 
@@ -275,7 +275,7 @@ published edition matrix. No running services required.`,
 
 // editionMatrix is the compiled-in edition comparison data.
 // Keep in sync with license.DefaultLimits() and license.featureEditions in the monorepo
-// (github.com/klurvio/sukko ws/internal/shared/license/). Edition values change ~1-2x/year.
+// (github.com/sukko-dev/sukko ws/internal/shared/license/). Edition values change ~1-2x/year.
 var editionMatrix = []struct {
 	dimension  string
 	community  string

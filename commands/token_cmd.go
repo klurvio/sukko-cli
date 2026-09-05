@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	clitoken "github.com/klurvio/sukko-cli/token"
+	clitoken "github.com/sukko-dev/cli/token"
 	"github.com/spf13/cobra"
 )
 
