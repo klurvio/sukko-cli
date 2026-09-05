@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	"github.com/klurvio/sukko-cli/commands"
+	"github.com/sukko-dev/cli/commands"
 )
 
 func main() {

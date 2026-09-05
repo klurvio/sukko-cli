@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/klurvio/sukko-cli/commands"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/sukko-dev/cli/commands"
 )
 
 // Command represents a cobra command in the JSON output.

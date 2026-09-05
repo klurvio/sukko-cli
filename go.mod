@@ -1,4 +1,4 @@
-module github.com/klurvio/sukko-cli
+module github.com/sukko-dev/cli
 
 go 1.26.1
 

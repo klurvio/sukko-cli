@@ -14,8 +14,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/klurvio/sukko-cli/client"
-	clicontext "github.com/klurvio/sukko-cli/context"
+	"github.com/sukko-dev/cli/client"
+	clicontext "github.com/sukko-dev/cli/context"
 )
 
 // =============================================================================

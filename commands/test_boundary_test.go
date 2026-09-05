@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	clicontext "github.com/klurvio/sukko-cli/context"
+	clicontext "github.com/sukko-dev/cli/context"
 )
 
 // These tests mutate package-level resolvedCtx/resolvedStore — no t.Parallel()

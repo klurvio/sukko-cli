@@ -25,7 +25,7 @@
 services:
   # ─── Provisioning API ─────────────────────────────────────────────
   provisioning:
-    image: ghcr.io/klurvio/sukko-provisioning:latest
+    image: ghcr.io/sukko-dev/sukko-provisioning:latest
     ports:
       - "18080:8080"
       - "19090:9090"
@@ -62,7 +62,7 @@ services:
       start_period: 5s
   # ─── WebSocket Server ─────────────────────────────────────────────
   ws-server:
-    image: ghcr.io/klurvio/sukko-server:latest
+    image: ghcr.io/sukko-dev/sukko-server:latest
     ports:
       - "3005:3005"
     # NOTE: list syntax (deviates from other services' map syntax — §XVIII) is required for
@@ -107,7 +107,7 @@ services:
       start_period: 10s
   # ─── WebSocket Gateway ────────────────────────────────────────────
   ws-gateway:
-    image: ghcr.io/klurvio/sukko-gateway:latest
+    image: ghcr.io/sukko-dev/sukko-gateway:latest
     ports:
       - "13000:3000"
     environment:
@@ -140,7 +140,7 @@ services:
   # profile keeps its historical "enterprise" name until the sukko-cli embedded
   # compose is renamed in lockstep.)
   push-service:
-    image: ghcr.io/klurvio/sukko-push:latest
+    image: ghcr.io/sukko-dev/sukko-push:latest
     profiles: ["enterprise"]
     ports:
       - "3008:3008"
@@ -169,7 +169,7 @@ services:
       start_period: 5s
   # ─── Tester Service ────────────────────────────────────────────────
   sukko-tester:
-    image: ghcr.io/klurvio/sukko-tester:latest
+    image: ghcr.io/sukko-dev/sukko-tester:latest
     ports:
       - "8090:8090"
     environment:
@@ -202,7 +202,7 @@ services:
       start_period: 5s
   # ─── Webhook Worker — activate with: --profile pro ───────────────────
   webhook-worker:
-    image: ghcr.io/klurvio/sukko-webhook-worker:latest
+    image: ghcr.io/sukko-dev/sukko-webhook-worker:latest
     profiles: ["pro"]
     ports:
       - "8083:8083"

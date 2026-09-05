@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/klurvio/sukko-cli/compose"
 	"github.com/spf13/cobra"
+	"github.com/sukko-dev/cli/compose"
 )
 
 var logsFollow bool
