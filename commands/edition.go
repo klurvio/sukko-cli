@@ -288,7 +288,7 @@ var editionMatrix = []struct {
 	{"Topics/Tenant", "10", "50", "Unlimited"},
 	{"Routing Rules/Tenant", "10", "100", "Unlimited"},
 	{"", "", "", ""},
-	// The full data path is Community (ADR-0005): kafka ingest, message
+	// The full data path is Community (platform ADR-0009): kafka ingest, message
 	// history, live gap recovery, and REST publish run on every edition —
 	// the capacity caps above are the tier wall. Client/REST publish INTO
 	// the kafka backend still needs Pro routing rules (Channel-Topic Routing).

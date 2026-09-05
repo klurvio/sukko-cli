@@ -686,6 +686,18 @@ sukko completion fish > ~/.config/fish/completions/sukko.fish
 | `sukko logs` | View Docker Compose service logs (`-f` to follow) |
 | `sukko grafana` | Open Grafana dashboard in browser |
 
+## Engineering
+
+- [Engineering principles](docs/engineering-principles.md) — the rules this
+  codebase is built and reviewed against. Code comments cite them by section:
+  `// per §III` refers to section III of that document; a section that does not
+  exist there (e.g. §XVIII) refers to the
+  [platform principles](https://github.com/sukko-dev/sukko/blob/main/docs/engineering-principles.md).
+- [Architecture decision records](docs/adr/) — durable decisions with context
+  and rejected alternatives; comments cite them as `ADR-NNNN`. A number not
+  present locally refers to the
+  [platform's ADR directory](https://github.com/sukko-dev/sukko/tree/main/docs/adr).
+
 ## License
 
 MIT

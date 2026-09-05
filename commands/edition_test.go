@@ -64,7 +64,7 @@ func TestEditionCompare_TableWidth(t *testing.T) {
 func TestEditionCompare_DimensionCount(t *testing.T) {
 	t.Parallel()
 
-	// Count non-separator rows (5 limits + 14 features under the ADR-0005 edition model)
+	// Count non-separator rows (5 limits + 14 features under the platform ADR-0009 edition model)
 	count := 0
 	for _, row := range editionMatrix {
 		if row.dimension != "" {
@@ -76,7 +76,7 @@ func TestEditionCompare_DimensionCount(t *testing.T) {
 	}
 }
 
-// TestEditionMatrix_EditionModel pins the ADR-0005 edition remap: the full data
+// TestEditionMatrix_EditionModel pins the platform ADR-0009 edition remap: the full data
 // path (kafka backend, message history, live gap recovery, REST publish) is
 // Community; Web Push and push analytics are Pro; mobile push (FCM/APNs) and
 // audit logging are Enterprise. It also guards against resurrecting rows that
@@ -124,7 +124,7 @@ func TestEditionMatrix_EditionModel(t *testing.T) {
 }
 
 // TestComparisonData_EditionModel keeps the JSON comparison payload consistent
-// with the editionMatrix under the ADR-0005 edition model.
+// with the editionMatrix under the platform ADR-0009 edition model.
 func TestComparisonData_EditionModel(t *testing.T) {
 	t.Parallel()
 
