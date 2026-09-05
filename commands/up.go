@@ -34,7 +34,7 @@ const (
 
 // isKafkaFamilyBackend reports whether the message backend selects the Kafka/Redpanda
 // broker (as opposed to the default "direct" backend). Both aliases are available on
-// every edition (ADR-0005) — ingest/fan-out runs license-free; only client/REST publish
+// every edition (platform ADR-0009) — ingest/fan-out runs license-free; only client/REST publish
 // INTO the kafka backend needs Pro routing rules (ChannelTopicRouting).
 func isKafkaFamilyBackend(backend string) bool {
 	return backend == backendKafka || backend == backendRedpanda
@@ -105,7 +105,7 @@ func runUp(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	// Kafka mode runs on every edition (ADR-0005) — no license gate. The only
+	// Kafka mode runs on every edition (platform ADR-0009) — no license gate. The only
 	// license-shaped edge is that client/REST publish INTO the kafka backend needs
 	// Pro routing rules, so surface that as an informational note (never a block)
 	// when no license key is configured.
@@ -192,7 +192,7 @@ const kafkaPublishNote = "Note: kafka ingest runs on every edition. Publishing f
 
 // shouldPrintKafkaPublishNote reports whether the informational kafka publish note
 // applies: a kafka-family backend is selected and no license key is configured.
-// Kafka itself is available on every edition (ADR-0005) — this never blocks startup.
+// Kafka itself is available on every edition (platform ADR-0009) — this never blocks startup.
 func shouldPrintKafkaPublishNote(backend, licenseKey string) bool {
 	return isKafkaFamilyBackend(backend) && licenseKey == ""
 }

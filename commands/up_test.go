@@ -206,7 +206,7 @@ func TestBuildComposeConfig_MessageBackend(t *testing.T) {
 }
 
 // TestShouldPrintKafkaPublishNote — kafka is available on every edition
-// (ADR-0005): 'sukko up' must never block on a missing license. The only
+// (platform ADR-0009): 'sukko up' must never block on a missing license. The only
 // remaining license-related behavior is an informational note that client/REST
 // publish into the kafka backend needs Pro routing rules.
 func TestShouldPrintKafkaPublishNote(t *testing.T) {
