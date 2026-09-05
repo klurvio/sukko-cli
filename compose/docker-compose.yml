@@ -86,7 +86,7 @@ services:
       - PPROF_ENABLED=${PPROF_ENABLED:-false}
       - PYROSCOPE_ENABLED=${PYROSCOPE_ENABLED:-false}
       - PYROSCOPE_ADDR=http://pyroscope:4040
-      # Kafka mode (available on every edition, ADR-0005; opt-in): set MESSAGE_BACKEND=kafka
+      # Kafka mode (available on every edition, ADR-0009; opt-in): set MESSAGE_BACKEND=kafka
       # and add `--profile kafka`. Client publish into kafka needs Pro routing rules
       # (ChannelTopicRouting); ingest/fan-out runs license-free. Unset ⇒ omitted ⇒ direct
       # (the zero-dependency default on all editions).
@@ -175,8 +175,8 @@ services:
     environment:
       GATEWAY_URL: "ws://ws-gateway:3000"
       # Gateway metrics BASE URL (suites append /metrics) — lets the token-revocation suite gate
-      # on the revocation stream being connected before revoking (FR-007,
-      # gateway_token_revocation_stream_state). Matches the soak/stress revocation suites' usage.
+      # on the revocation stream being connected before revoking
+      # (gateway_token_revocation_stream_state). Matches the soak/stress revocation suites' usage.
       TESTER_GATEWAY_METRICS_URL: "http://ws-gateway:3000"
       PROVISIONING_URL: "http://provisioning:8080"
       TESTER_AUTH_TOKEN: "sukko-dev-token"
